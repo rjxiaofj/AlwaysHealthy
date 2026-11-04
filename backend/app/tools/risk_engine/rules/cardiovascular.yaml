@@ -1,0 +1,153 @@
+version: "1.0.0"
+dimension: cardiovascular
+rules:
+  - rule_id: CV_SBP_160
+    rule_version: "1.0.0"
+    indicator: systolic_bp
+    condition:
+      operator: ">="
+      value: 160
+    unit: mmHg
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 高
+    urgency: 需尽快就医
+    rule_source:
+      source_id: KB_CN_HYPERTENSION_2024
+      title: 中国高血压防治指南（2024年修订版）
+      version: "2024"
+      page: null
+    recommended_action:
+      - 静坐复测血压并记录测量时间
+      - 尽快到心内科或全科门诊评估
+    message: 收缩压达到 160 mmHg 及以上
+    status: active
+
+  - rule_id: CV_DBP_100
+    rule_version: "1.0.0"
+    indicator: diastolic_bp
+    condition:
+      operator: ">="
+      value: 100
+    unit: mmHg
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 高
+    urgency: 需尽快就医
+    rule_source:
+      source_id: KB_CN_HYPERTENSION_2024
+      title: 中国高血压防治指南（2024年修订版）
+      version: "2024"
+      page: null
+    recommended_action:
+      - 静坐复测血压并记录测量时间
+      - 尽快到心内科或全科门诊评估
+    message: 舒张压达到 100 mmHg 及以上
+    status: active
+
+  - rule_id: CV_SBP_140
+    rule_version: "1.0.0"
+    indicator: systolic_bp
+    condition:
+      operator: ">="
+      value: 140
+    unit: mmHg
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_HYPERTENSION_2024
+      title: 中国高血压防治指南（2024年修订版）
+      version: "2024"
+      page: null
+    recommended_action:
+      - 非同日复测三次血压
+      - 记录家庭血压并减少钠盐摄入
+    message: 收缩压处于 140 mmHg 及以上
+    status: active
+
+  - rule_id: CV_DBP_90
+    rule_version: "1.0.0"
+    indicator: diastolic_bp
+    condition:
+      operator: ">="
+      value: 90
+    unit: mmHg
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_HYPERTENSION_2024
+      title: 中国高血压防治指南（2024年修订版）
+      version: "2024"
+      page: null
+    recommended_action:
+      - 非同日复测三次血压
+      - 记录家庭血压并减少钠盐摄入
+    message: 舒张压处于 90 mmHg 及以上
+    status: active
+
+  - rule_id: CV_HISTORY
+    rule_version: "1.0.0"
+    indicator: cvd_history
+    condition:
+      operator: "=="
+      value: true
+    unit: ""
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 高
+    rule_source:
+      source_id: KB_CN_HYPERTENSION_2024
+      title: 中国高血压防治指南（2024年修订版）
+      version: "2024"
+      page: null
+    recommended_action:
+      - 已确诊心血管疾病者按专科随访计划管理
+      - 不自行停用或调整在服药物
+    message: 自述存在心血管疾病史
+    status: active
+
+  - rule_id: CV_SMOKING_MIDAGE
+    rule_version: "1.0.0"
+    indicator: smoking_status
+    condition:
+      operator: "=="
+      value: current
+    unit: ""
+    applicable_population: adult
+    filters:
+      age_gte: 40
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_HYPERTENSION_2024
+      title: 中国高血压防治指南（2024年修订版）
+      version: "2024"
+      page: null
+    recommended_action:
+      - 设定戒烟启动日期
+      - 记录每日吸烟支数作为基线
+    message: 40 岁以上且当前吸烟
+    status: active
+
+  - rule_id: CV_FAMILY_HISTORY
+    rule_version: "1.0.0"
+    indicator: cvd_family_history
+    condition:
+      operator: "=="
+      value: true
+    unit: ""
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_HYPERTENSION_2024
+      title: 中国高血压防治指南（2024年修订版）
+      version: "2024"
+      page: null
+    recommended_action:
+      - 定期监测血压
+      - 评估时主动告知家族史
+    message: 存在心血管疾病家族史
+    status: active

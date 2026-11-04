@@ -1,0 +1,150 @@
+version: "1.0.0"
+dimension: lifestyle
+rules:
+  - rule_id: LIF_EXERCISE_LOW
+    rule_version: "1.0.0"
+    indicator: exercise_days
+    condition:
+      operator: "<="
+      value: 1
+    unit: day/week
+    applicable_population: adult
+    excluded_conditions:
+      - 医生限制活动
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_PHYSICAL_ACTIVITY
+      title: 中国人群身体活动指南（2021）
+      version: "2021"
+      page: null
+    recommended_action:
+      - 从每周两天快走二十分钟开始
+      - 逐步增加到每周一百五十分钟中等强度活动
+    message: 每周运动天数不超过 1 天
+    status: active
+
+  - rule_id: LIF_SEDENTARY_8
+    rule_version: "1.0.0"
+    indicator: sedentary_hours
+    condition:
+      operator: ">="
+      value: 8
+    unit: h/day
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_PHYSICAL_ACTIVITY
+      title: 中国人群身体活动指南（2021）
+      version: "2021"
+      page: null
+    recommended_action:
+      - 每坐一小时起身活动三到五分钟
+      - 记录每日久坐时段
+    message: 每日久坐时间达到 8 小时及以上
+    status: active
+
+  - rule_id: LIF_SALT_HIGH
+    rule_version: "1.0.0"
+    indicator: salt_intake_high
+    condition:
+      operator: "=="
+      value: true
+    unit: ""
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_DIETARY_2022
+      title: 中国居民膳食指南（2022）
+      version: "2022"
+      page: null
+    recommended_action:
+      - 记录一日三餐中的腌制与加工食品
+      - 逐步把每日食盐控制在 5 克以内
+    message: 自述高盐饮食为主
+    status: active
+
+  - rule_id: LIF_SUGARY_DRINK
+    rule_version: "1.0.0"
+    indicator: sugary_drinks_daily
+    condition:
+      operator: ">="
+      value: 1
+    unit: cup/day
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_DIETARY_2022
+      title: 中国居民膳食指南（2022）
+      version: "2022"
+      page: null
+    recommended_action:
+      - 用白水替代含糖饮料
+      - 记录每日饮料摄入量
+    message: 每天至少一杯含糖饮料
+    status: active
+
+  - rule_id: LIF_VEG_LOW
+    rule_version: "1.0.0"
+    indicator: vegetable_servings
+    condition:
+      operator: "<"
+      value: 3
+    unit: serving/day
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_DIETARY_2022
+      title: 中国居民膳食指南（2022）
+      version: "2022"
+      page: null
+    recommended_action:
+      - 每餐增加一份蔬菜
+      - 记录每日蔬菜与水果份数
+    message: 每日蔬菜摄入不足三份
+    status: active
+
+  - rule_id: LIF_ALCOHOL_HIGH
+    rule_version: "1.0.0"
+    indicator: drinking_frequency
+    condition:
+      operator: "=="
+      value: daily
+    unit: ""
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_DIETARY_2022
+      title: 中国居民膳食指南（2022）
+      version: "2022"
+      page: null
+    recommended_action:
+      - 记录每周饮酒次数与单次量
+      - 安排无酒日
+    message: 每日饮酒
+    status: active
+
+  - rule_id: LIF_SMOKING
+    rule_version: "1.0.0"
+    indicator: smoking_status
+    condition:
+      operator: "=="
+      value: current
+    unit: ""
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_SMOKING
+      title: 中国吸烟危害健康报告要点
+      version: "2020"
+      page: null
+    recommended_action:
+      - 设定戒烟日并告知家人
+      - 戒烟困难时到戒烟门诊寻求帮助
+    message: 当前吸烟
+    status: active

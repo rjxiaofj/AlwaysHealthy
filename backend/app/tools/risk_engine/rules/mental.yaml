@@ -1,0 +1,108 @@
+version: "1.0.0"
+dimension: mental
+rules:
+  - rule_id: MEN_PHQ9_15
+    rule_version: "1.0.0"
+    indicator: phq9_score
+    condition:
+      operator: ">="
+      value: 15
+    unit: score
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 高
+    urgency: 需尽快就医
+    rule_source:
+      source_id: KB_PHQ_SCREENING
+      title: 患者健康问卷 PHQ-9 中文版使用说明
+      version: "1.0"
+      page: null
+    recommended_action:
+      - 到精神心理科或心理门诊做专业评估
+      - 不自行停用或调整在服药物
+    message: PHQ-9 得分达到 15 分及以上
+    status: active
+
+  - rule_id: MEN_PHQ9_10
+    rule_version: "1.0.0"
+    indicator: phq9_score
+    condition:
+      operator: ">="
+      value: 10
+    unit: score
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_PHQ_SCREENING
+      title: 患者健康问卷 PHQ-9 中文版使用说明
+      version: "1.0"
+      page: null
+    recommended_action:
+      - 两周后复测并记录情绪变化
+      - 保持规律作息与社会联系
+    message: PHQ-9 得分处于 10 分及以上
+    status: active
+
+  - rule_id: MEN_PHQ2_3
+    rule_version: "1.0.0"
+    indicator: phq2_score
+    condition:
+      operator: ">="
+      value: 3
+    unit: score
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_PHQ_SCREENING
+      title: 患者健康问卷 PHQ-2 中文版使用说明
+      version: "1.0"
+      page: null
+    recommended_action:
+      - 完成 PHQ-9 进一步筛查
+      - 记录情绪低落持续天数
+    message: PHQ-2 筛查阳性
+    status: active
+
+  - rule_id: MEN_STRESS_HIGH
+    rule_version: "1.0.0"
+    indicator: stress_level
+    condition:
+      operator: "=="
+      value: high
+    unit: ""
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_MENTAL_WELLBEING
+      title: 成人心理健康与压力管理要点
+      version: "2023"
+      page: null
+    recommended_action:
+      - 记录压力来源与出现时段
+      - 每天安排一次十分钟的放松练习
+    message: 自述压力感受高
+    status: active
+
+  - rule_id: MEN_FUNCTION_IMPAIRED
+    rule_version: "1.0.0"
+    indicator: function_impaired
+    condition:
+      operator: "=="
+      value: true
+    unit: ""
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_MENTAL_WELLBEING
+      title: 成人心理健康与压力管理要点
+      version: "2023"
+      page: null
+    recommended_action:
+      - 记录对工作学习的具体影响
+      - 影响持续两周以上时寻求专业帮助
+    message: 情绪问题已影响日常工作或学习
+    status: active

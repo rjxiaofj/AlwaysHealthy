@@ -1,0 +1,84 @@
+version: "1.0.0"
+# 高危识别只看确定性规则，模型不可用时也必须生效。
+# 宁可误报也不能漏报，命中即进入紧急响应，不做普通建议。
+signals:
+  - rule_id: EM_CHEST_PAIN
+    category: 躯体
+    message: 胸痛或胸部压榨感
+    patterns:
+      - 胸痛
+      - 胸口痛
+      - 胸口压
+      - 心口疼
+      - 胸部压榨
+      - 胸闷得喘不上气
+
+  - rule_id: EM_DYSPNEA
+    category: 躯体
+    message: 严重呼吸困难
+    patterns:
+      - 呼吸困难
+      - 喘不上气
+      - 无法呼吸
+      - 窒息
+      - 嘴唇发紫
+
+  - rule_id: EM_CONSCIOUSNESS
+    category: 躯体
+    message: 意识障碍
+    patterns:
+      - 意识模糊
+      - 昏迷
+      - 叫不醒
+      - 抽搐
+      - 晕倒
+      - 失去意识
+
+  - rule_id: EM_BLEEDING
+    category: 躯体
+    message: 严重出血
+    patterns:
+      - 大出血
+      - 止不住血
+      - 大量出血
+      - 呕血
+      - 咳血
+
+  - rule_id: EM_ANAPHYLAXIS
+    category: 躯体
+    message: 严重过敏反应
+    patterns:
+      - 喉咙肿
+      - 喉头水肿
+      - 全身起疹子喘
+      - 过敏性休克
+
+  - rule_id: EM_STROKE
+    category: 躯体
+    message: 急性神经系统症状
+    patterns:
+      - 半边身子不能动
+      - 一侧肢体无力
+      - 嘴歪
+      - 说话说不清
+      - 突然看不见
+
+  - rule_id: EM_SUICIDE
+    category: 心理
+    message: 自杀或自伤风险
+    patterns:
+      - 想自杀
+      - 不想活了
+      - 结束自己的生命
+      - 割腕
+      - 跳楼
+      - 服药自杀
+      - 自残
+
+  - rule_id: EM_IMMEDIATE_DANGER
+    category: 其他
+    message: 用户明确表达当前生命危险
+    patterns:
+      - 救救我
+      - 我快死了
+      - 有生命危险

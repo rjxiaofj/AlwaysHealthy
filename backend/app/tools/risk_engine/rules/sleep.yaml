@@ -1,0 +1,107 @@
+version: "1.0.0"
+dimension: sleep
+rules:
+  - rule_id: SLP_HOURS_LT5
+    rule_version: "1.0.0"
+    indicator: sleep_hours
+    condition:
+      operator: "<"
+      value: 5
+    unit: h
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 高
+    rule_source:
+      source_id: KB_CN_SLEEP_HEALTH
+      title: 中国成人睡眠健康指南要点
+      version: "2022"
+      page: null
+    recommended_action:
+      - 固定起床时间并连续记录两周睡眠
+      - 持续存在日间功能下降时到睡眠门诊评估
+    message: 平均睡眠时长不足 5 小时
+    status: active
+
+  - rule_id: SLP_HOURS_LT6
+    rule_version: "1.0.0"
+    indicator: sleep_hours
+    condition:
+      operator: "<"
+      value: 6
+    unit: h
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_SLEEP_HEALTH
+      title: 中国成人睡眠健康指南要点
+      version: "2022"
+      page: null
+    recommended_action:
+      - 记录入睡与起床时间
+      - 睡前减少屏幕使用与咖啡因摄入
+    message: 平均睡眠时长不足 6 小时
+    status: active
+
+  - rule_id: SLP_LATENCY_30
+    rule_version: "1.0.0"
+    indicator: sleep_latency_min
+    condition:
+      operator: ">="
+      value: 30
+    unit: min
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_SLEEP_HEALTH
+      title: 中国成人睡眠健康指南要点
+      version: "2022"
+      page: null
+    recommended_action:
+      - 记录连续一周入睡耗时
+      - 卧床超过二十分钟未入睡时起身做安静活动
+    message: 入睡所需时间达到 30 分钟及以上
+    status: active
+
+  - rule_id: SLP_APNEA_SIGN
+    rule_version: "1.0.0"
+    indicator: apnea_suspected
+    condition:
+      operator: "=="
+      value: true
+    unit: ""
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_SLEEP_HEALTH
+      title: 中国成人睡眠健康指南要点
+      version: "2022"
+      page: null
+    recommended_action:
+      - 记录打鼾与夜间憋醒情况
+      - 到呼吸科或睡眠门诊做专业评估
+    message: 自述存在打鼾伴憋醒等睡眠呼吸暂停表现
+    status: active
+
+  - rule_id: SLP_DAYTIME_SLEEPY
+    rule_version: "1.0.0"
+    indicator: daytime_sleepiness
+    condition:
+      operator: "=="
+      value: high
+    unit: ""
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_SLEEP_HEALTH
+      title: 中国成人睡眠健康指南要点
+      version: "2022"
+      page: null
+    recommended_action:
+      - 避免驾驶或高空作业时强行支撑
+      - 记录日间困倦出现的时段
+    message: 日间困倦程度高
+    status: active

@@ -1,0 +1,245 @@
+version: "1.0.0"
+dimension: metabolic
+rules:
+  - rule_id: MET_BMI_28
+    rule_version: "1.0.0"
+    indicator: bmi
+    condition:
+      operator: ">="
+      value: 28
+    unit: kg/m2
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 高
+    rule_source:
+      source_id: KB_CN_BMI_STANDARD
+      title: 中国成人超重和肥胖症预防控制指南
+      version: "2022"
+      page: null
+    recommended_action:
+      - 设定每周体重测量记录
+      - 从每日主食份量与含糖饮料入手调整
+    message: BMI 达到 28 及以上
+    status: active
+
+  - rule_id: MET_BMI_24
+    rule_version: "1.0.0"
+    indicator: bmi
+    condition:
+      operator: ">="
+      value: 24
+    unit: kg/m2
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_BMI_STANDARD
+      title: 中国成人超重和肥胖症预防控制指南
+      version: "2022"
+      page: null
+    recommended_action:
+      - 每周固定时间称重并记录
+      - 增加每周中等强度活动时长
+    message: BMI 处于 24 及以上
+    status: active
+
+  - rule_id: MET_WAIST_MALE
+    rule_version: "1.0.0"
+    indicator: waist_cm
+    condition:
+      operator: ">="
+      value: 90
+    unit: cm
+    applicable_population: adult
+    filters:
+      sex: male
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_BMI_STANDARD
+      title: 中国成人超重和肥胖症预防控制指南
+      version: "2022"
+      page: null
+    recommended_action:
+      - 记录腰围测量位置与时间
+      - 减少久坐并增加有氧活动
+    message: 男性腰围达到 90 cm 及以上
+    status: active
+
+  - rule_id: MET_WAIST_FEMALE
+    rule_version: "1.0.0"
+    indicator: waist_cm
+    condition:
+      operator: ">="
+      value: 85
+    unit: cm
+    applicable_population: adult
+    filters:
+      sex: female
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_BMI_STANDARD
+      title: 中国成人超重和肥胖症预防控制指南
+      version: "2022"
+      page: null
+    recommended_action:
+      - 记录腰围测量位置与时间
+      - 减少久坐并增加有氧活动
+    message: 女性腰围达到 85 cm 及以上
+    status: active
+
+  - rule_id: MET_FPG_7
+    rule_version: "1.0.0"
+    indicator: fasting_glucose
+    condition:
+      operator: ">="
+      value: 7.0
+    unit: mmol/L
+    applicable_population: adult
+    excluded_conditions:
+      - 非空腹采血
+    risk_level: 高
+    urgency: 需尽快就医
+    rule_source:
+      source_id: KB_CN_DIABETES_2020
+      title: 中国2型糖尿病防治指南（2020年版）
+      version: "2020"
+      page: null
+    recommended_action:
+      - 在空腹条件下复测静脉血糖
+      - 到内分泌科进一步评估
+    message: 空腹血糖达到 7.0 mmol/L 及以上
+    status: active
+
+  - rule_id: MET_FPG_6
+    rule_version: "1.0.0"
+    indicator: fasting_glucose
+    condition:
+      operator: ">="
+      value: 6.1
+    unit: mmol/L
+    applicable_population: adult
+    excluded_conditions:
+      - 非空腹采血
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_DIABETES_2020
+      title: 中国2型糖尿病防治指南（2020年版）
+      version: "2020"
+      page: null
+    recommended_action:
+      - 复查空腹血糖并记录检测日期
+      - 减少精制糖与含糖饮料摄入
+    message: 空腹血糖处于 6.1 mmol/L 及以上
+    status: active
+
+  - rule_id: MET_HBA1C_65
+    rule_version: "1.0.0"
+    indicator: hba1c
+    condition:
+      operator: ">="
+      value: 6.5
+    unit: "%"
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 高
+    urgency: 需尽快就医
+    rule_source:
+      source_id: KB_CN_DIABETES_2020
+      title: 中国2型糖尿病防治指南（2020年版）
+      version: "2020"
+      page: null
+    recommended_action:
+      - 携带化验单到内分泌科评估
+      - 记录近期体重变化
+    message: 糖化血红蛋白达到 6.5% 及以上
+    status: active
+
+  - rule_id: MET_LDL_41
+    rule_version: "1.0.0"
+    indicator: ldl_c
+    condition:
+      operator: ">="
+      value: 4.1
+    unit: mmol/L
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_LIPID_2023
+      title: 中国血脂管理指南（2023年）
+      version: "2023"
+      page: null
+    recommended_action:
+      - 复查血脂四项
+      - 减少饱和脂肪摄入
+    message: 低密度脂蛋白胆固醇达到 4.1 mmol/L 及以上
+    status: active
+
+  - rule_id: MET_TG_23
+    rule_version: "1.0.0"
+    indicator: triglycerides
+    condition:
+      operator: ">="
+      value: 2.3
+    unit: mmol/L
+    applicable_population: adult
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_LIPID_2023
+      title: 中国血脂管理指南（2023年）
+      version: "2023"
+      page: null
+    recommended_action:
+      - 复查血脂并记录采血前空腹时长
+      - 限制酒精与精制碳水
+    message: 甘油三酯达到 2.3 mmol/L 及以上
+    status: active
+
+  - rule_id: MET_HDL_LOW_MALE
+    rule_version: "1.0.0"
+    indicator: hdl_c
+    condition:
+      operator: "<"
+      value: 1.0
+    unit: mmol/L
+    applicable_population: adult
+    filters:
+      sex: male
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_LIPID_2023
+      title: 中国血脂管理指南（2023年）
+      version: "2023"
+      page: null
+    recommended_action:
+      - 增加有氧运动频次
+      - 复查血脂时同步记录体重
+    message: 男性高密度脂蛋白胆固醇低于 1.0 mmol/L
+    status: active
+
+  - rule_id: MET_HDL_LOW_FEMALE
+    rule_version: "1.0.0"
+    indicator: hdl_c
+    condition:
+      operator: "<"
+      value: 1.3
+    unit: mmol/L
+    applicable_population: adult
+    filters:
+      sex: female
+    excluded_conditions: []
+    risk_level: 中
+    rule_source:
+      source_id: KB_CN_LIPID_2023
+      title: 中国血脂管理指南（2023年）
+      version: "2023"
+      page: null
+    recommended_action:
+      - 增加有氧运动频次
+      - 复查血脂时同步记录体重
+    message: 女性高密度脂蛋白胆固醇低于 1.3 mmol/L
+    status: active
