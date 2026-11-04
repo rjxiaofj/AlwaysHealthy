@@ -21,6 +21,7 @@ from app.db.models import (
     User,
     WorkflowRun,
 )
+from app.integrations.wearable import QUALITY_VERIFIED, SOURCE_WEARABLE
 
 
 async def get_user(session: AsyncSession, user_id: UUID) -> User | None:
@@ -77,9 +78,9 @@ def _counting_for_assessment(row: HealthMetricRecord) -> bool:
 
     否则第一次拉取手环就会把估算心率替换掉用户手动录入的血压记录。
     """
-    if row.source_type != "wearable":
+    if row.source_type != SOURCE_WEARABLE:
         return True
-    return (row.measurement_context or {}).get("quality_status") == "verified"
+    return (row.measurement_context or {}).get("quality_status") == QUALITY_VERIFIED
 
 
 async def assessment_of(session: AsyncSession, user_id: UUID, assessment_id: UUID) -> RiskAssessment | None:
