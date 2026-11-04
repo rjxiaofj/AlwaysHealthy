@@ -52,6 +52,15 @@ async function load() {
   }
 }
 
+async function markRead(id: string) {
+  try {
+    await reminderApi.read(id)
+    reminders.value = reminders.value.filter((item) => item.id !== id)
+  } catch {
+    /* 标记失败不挡住页面，下次进入还会重新拉取 */
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -136,12 +145,20 @@ onMounted(load)
         </section>
 
         <section class="glass card-pad">
-          <h2 class="mb-3 text-[14px] font-semibold">未读提醒</h2>
+          <div class="mb-3 flex items-center justify-between">
+            <h2 class="text-[14px] font-semibold">未读提醒</h2>
+            <span v-if="reminders.length" class="text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+              {{ reminders.length }} 条
+            </span>
+          </div>
           <EmptyState v-if="!reminders.length" title="没有未读提醒" />
           <ul v-else class="flex flex-col gap-2">
-            <li v-for="item in reminders" :key="item.id" class="text-[12px]">
-              <p class="font-medium">{{ item.title }}</p>
-              <p :style="{ color: 'var(--color-text-secondary)' }">{{ item.content }}</p>
+            <li v-for="item in reminders" :key="item.id" class="flex items-start justify-between gap-2">
+              <div class="min-w-0 text-[12px]">
+                <p class="font-medium">{{ item.title }}</p>
+                <p :style="{ color: 'var(--color-text-secondary)' }">{{ item.content }}</p>
+              </div>
+              <button class="btn btn-ghost shrink-0 !px-2 !py-1 text-[11px]" @click="markRead(item.id)">已读</button>
             </li>
           </ul>
         </section>

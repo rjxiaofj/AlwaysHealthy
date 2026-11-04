@@ -1,16 +1,24 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 
-import { profileApi, reportApi } from '@/api'
-import type { FileItem, Profile, ReportSummary } from '@/api/types'
+import { consentApi, profileApi, reportApi } from '@/api'
+import { tokens } from '@/api/client'
+import type { ConsentRecord, FileItem, Profile, ReportSummary } from '@/api/types'
 import { useToastStore } from '@/stores/toast'
 
 const toast = useToastStore()
 const profile = ref<Profile | null>(null)
 const reports = ref<ReportSummary[]>([])
 const files = ref<FileItem[]>([])
+const consents = ref<ConsentRecord[]>([])
 const busy = ref(false)
 const uploading = ref(false)
+const downloading = ref('')
+
+const consentOptions = [
+  { type: 'health_data', label: '健康数据处理', desc: '保存并使用健康档案与指标记录生成评估' },
+  { type: 'ai_analysis', label: 'AI 辅助分析', desc: '把必要的健康描述发送给模型生成建议，不发送账号与令牌' },
+]
 
 const form = ref({
   birth_date: '',
@@ -38,10 +46,16 @@ const conditions = [
 ]
 
 async function load() {
-  const [data, reportList, fileList] = await Promise.all([profileApi.get(), reportApi.list(), profileApi.files()])
+  const [data, reportList, fileList, consentList] = await Promise.all([
+    profileApi.get(),
+    reportApi.list(),
+    profileApi.files(),
+    consentApi.list(),
+  ])
   profile.value = data
   reports.value = reportList
   files.value = fileList
+  consents.value = consentList
   const lifestyle = data.lifestyle || {}
   form.value = {
     birth_date: data.birth_date || '',
@@ -120,6 +134,43 @@ async function upload(event: Event) {
 
 function sizeText(size: number) {
   return size > 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)} MB` : `${Math.round(size / 1024)} KB`
+}
+
+async function downloadFile(item: FileItem) {
+  downloading.value = item.id
+  try {
+    // 下载接口要鉴权，不能直接用 a 标签跳转
+    const response = await fetch(`/api/v1/files/${item.id}/download`, {
+      headers: { Authorization: `Bearer ${tokens.access}` },
+    })
+    if (!response.ok) throw new Error('下载失败')
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = item.original_filename
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : '下载失败')
+  } finally {
+    downloading.value = ''
+  }
+}
+
+async function setConsent(type: string, granted: boolean) {
+  try {
+    await consentApi.set(type, granted)
+    consents.value = await consentApi.list()
+    toast.success(granted ? '已授权' : '已撤回授权')
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : '操作失败')
+  }
+}
+
+function consentStatus(type: string) {
+  const latest = consents.value.find((item) => item.consent_type === type)
+  return latest ? latest.consent_status : 'none'
 }
 
 onMounted(load)
@@ -260,11 +311,46 @@ onMounted(load)
             支持 PDF、JPG、PNG，单个不超过 10MB。当前版本只保存文件，文字识别与字段提取尚未开放，上传结果不会被自动写入档案。
           </p>
           <ul class="mt-2 flex flex-col gap-1">
-            <li v-for="item in files" :key="item.id" class="flex items-center justify-between text-[12px]">
+            <li v-for="item in files" :key="item.id" class="flex items-center justify-between gap-2 text-[12px]">
               <span class="truncate">{{ item.original_filename }}</span>
-              <span :style="{ color: 'var(--color-text-tertiary)' }">{{ sizeText(item.file_size) }} · {{ item.parse_status }}</span>
+              <span class="flex shrink-0 items-center gap-2">
+                <span :style="{ color: 'var(--color-text-tertiary)' }">{{ sizeText(item.file_size) }} · {{ item.parse_status }}</span>
+                <button class="btn btn-ghost !px-2 !py-1 text-[11px]" :disabled="downloading === item.id" @click="downloadFile(item)">
+                  {{ downloading === item.id ? '下载中' : '下载' }}
+                </button>
+              </span>
             </li>
           </ul>
+        </section>
+        <section class="glass card-pad">
+          <h2 class="mb-2 text-[14px] font-semibold">隐私与授权</h2>
+          <ul class="flex flex-col gap-2">
+            <li
+              v-for="item in consentOptions"
+              :key="item.type"
+              class="flex items-start justify-between gap-3 rounded-[14px] border px-3 py-2"
+              :style="{ borderColor: 'var(--color-border)' }"
+            >
+              <div class="min-w-0">
+                <p class="text-[12px] font-medium">
+                  {{ item.label }}
+                  <span class="chip ml-1" :class="consentStatus(item.type) === 'granted' ? 'level-low' : 'level-unknown'">
+                    {{ consentStatus(item.type) === 'granted' ? '已授权' : consentStatus(item.type) === 'revoked' ? '已撤回' : '未授权' }}
+                  </span>
+                </p>
+                <p class="mt-1 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">{{ item.desc }}</p>
+              </div>
+              <button
+                class="btn btn-ghost shrink-0 !px-2 !py-1 text-[11px]"
+                @click="setConsent(item.type, consentStatus(item.type) !== 'granted')"
+              >
+                {{ consentStatus(item.type) === 'granted' ? '撤回' : '授权' }}
+              </button>
+            </li>
+          </ul>
+          <p class="mt-2 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+            授权与撤回都会留记录，撤回不影响历史报告的查阅
+          </p>
         </section>
       </div>
     </div>

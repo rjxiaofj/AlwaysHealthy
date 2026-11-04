@@ -3,6 +3,7 @@ import type {
   Assessment,
   AssessmentSummary,
   ChatMessage,
+  ConsentRecord,
   Conversation,
   FileItem,
   PageData,
@@ -95,4 +96,12 @@ export const reportApi = {
 export const reminderApi = {
   list: () => api<Reminder[]>('/reminders'),
   read: (id: string) => api<null>(`/reminders/${id}/read`, { body: {} }),
+}
+
+export const consentApi = {
+  list: () => api<ConsentRecord[]>('/consents'),
+  set: (consentType: string, granted: boolean) =>
+    api<{ id: string; consent_status: string }>('/consents', {
+      body: { consent_type: consentType, policy_version: 'v1', granted },
+    }),
 }

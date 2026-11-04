@@ -34,6 +34,42 @@ const form = ref({
 const selected = computed(() => trends.value.find((item) => item.metric_code === active.value) || trends.value[0])
 const currentUnit = computed(() => metrics.find((item) => item.code === form.value.metric_code)?.unit || '')
 
+const feedback = ref({
+  mood_status: '',
+  fatigue_level: '',
+  physical_feeling: '',
+  execution_difficulty: '',
+})
+const feedbackBusy = ref(false)
+
+function resetFeedback() {
+  feedback.value = { mood_status: '', fatigue_level: '', physical_feeling: '', execution_difficulty: '' }
+}
+
+async function submitFeedback() {
+  const payload: Record<string, unknown> = {}
+  if (feedback.value.mood_status) payload.mood_status = feedback.value.mood_status
+  if (feedback.value.fatigue_level) payload.fatigue_level = feedback.value.fatigue_level
+  if (feedback.value.physical_feeling.trim()) payload.physical_feeling = feedback.value.physical_feeling.trim()
+  if (feedback.value.execution_difficulty.trim()) {
+    payload.execution_difficulty = feedback.value.execution_difficulty.trim()
+  }
+  if (!Object.keys(payload).length) {
+    toast.error('至少记录一项')
+    return
+  }
+  feedbackBusy.value = true
+  try {
+    await trackingApi.feedback(payload)
+    toast.success('已记录，感受不会自动当作指标变化')
+    resetFeedback()
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : '记录失败')
+  } finally {
+    feedbackBusy.value = false
+  }
+}
+
 async function load() {
   const codes = metrics.map((item) => item.code)
   trends.value = await trackingApi.trends(codes, days.value)
@@ -132,33 +168,78 @@ onMounted(load)
         </div>
       </section>
 
-      <section class="glass card-pad">
-        <h2 class="text-[14px] font-semibold">录入指标</h2>
-        <div class="mt-3 flex flex-col gap-3">
-          <div>
-            <label class="label" for="metric">指标</label>
-            <select id="metric" v-model="form.metric_code" class="field">
-              <option v-for="item in metrics" :key="item.code" :value="item.code">{{ item.label }}（{{ item.unit }}）</option>
-            </select>
+      <div class="flex flex-col gap-4">
+        <section class="glass card-pad">
+          <h2 class="text-[14px] font-semibold">录入指标</h2>
+          <div class="mt-3 flex flex-col gap-3">
+            <div>
+              <label class="label" for="metric">指标</label>
+              <select id="metric" v-model="form.metric_code" class="field">
+                <option v-for="item in metrics" :key="item.code" :value="item.code">{{ item.label }}（{{ item.unit }}）</option>
+              </select>
+            </div>
+            <div>
+              <label class="label" for="value">数值 {{ currentUnit }}</label>
+              <input id="value" v-model="form.value" class="field" inputmode="decimal" placeholder="例如 126" />
+            </div>
+            <div>
+              <label class="label" for="time">测量时间</label>
+              <input id="time" v-model="form.measured_at" class="field" type="datetime-local" />
+            </div>
+            <label v-if="form.metric_code === 'fasting_glucose'" class="flex items-center gap-2 text-[12px]">
+              <input v-model="form.fasting" type="checkbox" />
+              空腹八小时以上
+            </label>
+            <button class="btn btn-primary" :disabled="busy" @click="submit">{{ busy ? '保存中' : '记录' }}</button>
+            <p class="text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+              血压建议静坐五分钟后测量，体重建议晨起空腹同一台秤。单位与测量条件会一起保存。
+            </p>
           </div>
-          <div>
-            <label class="label" for="value">数值 {{ currentUnit }}</label>
-            <input id="value" v-model="form.value" class="field" inputmode="decimal" placeholder="例如 126" />
-          </div>
-          <div>
-            <label class="label" for="time">测量时间</label>
-            <input id="time" v-model="form.measured_at" class="field" type="datetime-local" />
-          </div>
-          <label v-if="form.metric_code === 'fasting_glucose'" class="flex items-center gap-2 text-[12px]">
-            <input v-model="form.fasting" type="checkbox" />
-            空腹八小时以上
-          </label>
-          <button class="btn btn-primary" :disabled="busy" @click="submit">{{ busy ? '保存中' : '记录' }}</button>
-          <p class="text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
-            血压建议静坐五分钟后测量，体重建议晨起空腹同一台秤。单位与测量条件会一起保存。
+        </section>
+
+        <section class="glass card-pad">
+          <h2 class="text-[14px] font-semibold">身体感受</h2>
+          <p class="mt-1 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+            记录主观感受，不参与风险分级
           </p>
-        </div>
-      </section>
+          <div class="mt-3 flex flex-col gap-3">
+            <div>
+              <label class="label" for="mood">情绪状态</label>
+              <select id="mood" v-model="feedback.mood_status" class="field">
+                <option value="">未填写</option>
+                <option value="good">平稳</option>
+                <option value="fair">一般</option>
+                <option value="low">低落</option>
+              </select>
+            </div>
+            <div>
+              <label class="label" for="fatigue">疲劳程度</label>
+              <select id="fatigue" v-model="feedback.fatigue_level" class="field">
+                <option value="">未填写</option>
+                <option value="low">轻</option>
+                <option value="medium">中</option>
+                <option value="high">重</option>
+              </select>
+            </div>
+            <div>
+              <label class="label" for="feeling">身体感受</label>
+              <textarea
+                id="feeling"
+                v-model="feedback.physical_feeling"
+                class="field h-16 resize-none"
+                placeholder="例如 下午容易犯困，走两层楼有点喘"
+              />
+            </div>
+            <div>
+              <label class="label" for="difficulty">执行困难</label>
+              <input id="difficulty" v-model="feedback.execution_difficulty" class="field" placeholder="例如 加班太晚没时间运动" />
+            </div>
+            <button class="btn btn-ghost" :disabled="feedbackBusy" @click="submitFeedback">
+              {{ feedbackBusy ? '保存中' : '记录感受' }}
+            </button>
+          </div>
+        </section>
+      </div>
     </div>
   </div>
 </template>

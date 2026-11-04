@@ -263,6 +263,16 @@ export interface FileItem {
   created_at: string
 }
 
+export interface ConsentRecord {
+  id: string
+  consent_type: string
+  label: string
+  policy_version: string
+  consent_status: string
+  consented_at: string
+  revoked_at: string | null
+}
+
 export interface ConfirmationPayload {
   run_id: string
   approval_type: 'profile' | 'plan'

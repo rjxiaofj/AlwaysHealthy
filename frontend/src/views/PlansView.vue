@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 
-import { planApi } from '@/api'
-import type { Plan, PlanSummary, Task } from '@/api/types'
+import { planApi, trackingApi } from '@/api'
+import type { Plan, PlanSummary, Task, TrackingSummary } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
 import { useToastStore } from '@/stores/toast'
 
 const toast = useToastStore()
 const plans = ref<PlanSummary[]>([])
 const selected = ref<Plan | null>(null)
+const summary = ref<TrackingSummary | null>(null)
 const loading = ref(true)
 const busy = ref(false)
 const duration = ref(14)
@@ -45,9 +46,20 @@ async function load(preferId?: string) {
     plans.value = await planApi.list()
     const target = preferId || selected.value?.id || plans.value[0]?.id
     selected.value = target ? await planApi.detail(target) : null
+    await loadSummary()
   } finally {
     loading.value = false
   }
+}
+
+async function loadSummary() {
+  const plan = selected.value
+  // 草稿计划还没有打卡记录，取总结只会得到全零，不展示
+  if (!plan || !['active', 'completed'].includes(plan.status)) {
+    summary.value = null
+    return
+  }
+  summary.value = await trackingApi.summary(plan.id).catch(() => null)
 }
 
 async function generate() {
@@ -144,7 +156,18 @@ onMounted(() => load())
         <div class="flex flex-wrap items-end gap-2">
           <div>
             <label class="label" for="duration">周期天数</label>
-            <input id="duration" v-model.number="duration" class="field w-[110px]" type="number" min="7" max="30" />
+            <div class="flex items-center gap-1">
+              <button
+                v-for="option in [7, 14]"
+                :key="option"
+                class="chip"
+                :class="duration === option ? 'level-low' : ''"
+                @click="duration = option"
+              >
+                {{ option }} 天
+              </button>
+              <input id="duration" v-model.number="duration" class="field w-[92px]" type="number" min="7" max="30" />
+            </div>
           </div>
           <div>
             <label class="label" for="goal">阶段目标</label>
@@ -208,6 +231,37 @@ onMounted(() => load())
               </li>
             </ul>
           </div>
+        </div>
+
+        <div v-if="summary" class="glass card-pad">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h2 class="text-[14px] font-semibold">周期总结</h2>
+            <span class="text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+              {{ summary.period_start }} 至 {{ summary.period_end }}
+            </span>
+          </div>
+          <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div>
+              <p class="text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">完成率</p>
+              <p class="text-[18px] font-semibold">{{ summary.completion_rate }}%</p>
+            </div>
+            <div>
+              <p class="text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">已完成任务</p>
+              <p class="text-[18px] font-semibold">{{ summary.task_completed }} / {{ summary.task_total }}</p>
+            </div>
+            <div>
+              <p class="text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">指标记录</p>
+              <p class="text-[18px] font-semibold">{{ summary.metrics.length }} 项</p>
+            </div>
+          </div>
+          <ul v-if="summary.notes.length" class="mt-3 flex flex-col gap-1">
+            <li v-for="line in summary.notes" :key="line" class="text-[12px]" :style="{ color: 'var(--color-text-secondary)' }">
+              {{ line }}
+            </li>
+          </ul>
+          <p class="mt-2 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+            完成率只反映执行情况，不代表身体指标改善或恶化
+          </p>
         </div>
 
         <div class="glass card-pad">
