@@ -47,6 +47,20 @@ async def test_rt_02_plan_versions_match_current(client, auth):
     assert active[0]["id"] == current_version_id
 
 
+async def test_rt_02_new_active_plan_supersedes_old_version(client, auth):
+    first = await activate_plan(client, auth)
+    second = await activate_plan(client, auth)
+
+    old = await client.get(f"/api/v1/plans/{first['id']}", headers=auth)
+    old_detail = old.json()["data"]
+    assert old_detail["status"] == "superseded"
+    # 旧计划被顶替后不能还留着一个 active 版本
+    assert all(item["status"] != "active" for item in old_detail["versions"])
+
+    fresh = await client.get(f"/api/v1/plans/{second['id']}", headers=auth)
+    assert fresh.json()["data"]["status"] == "active"
+
+
 async def test_rt_03_report_content_frozen_after_profile_change(client, auth):
     await run_assessment_to_report(client, auth)
 

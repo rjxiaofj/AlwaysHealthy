@@ -96,6 +96,11 @@ async def approve(session: AsyncSession, user_id: UUID, plan_id: UUID, version_i
     )
     for other in others:
         other.status = "superseded"
+        # 计划被顶替时版本状态要一起收敛，否则详情页会显示一个已失效的 active 版本
+        if other.current_version_id:
+            stale = await repo.version_of(session, other.id, other.current_version_id)
+            if stale and stale.status == "active":
+                stale.status = "superseded"
 
     if plan.current_version_id and plan.current_version_id != version.id:
         previous = await repo.version_of(session, plan.id, plan.current_version_id)
