@@ -31,5 +31,5 @@
 
 ## 回归
 
-`tests/unit/test_plan_validator.py`、`tests/api/test_flow.py::test_checkin_is_idempotent`。
-改确认流程还要跑 `test_assessment_flow_reaches_report`，确认计划状态与版本号正确。
+`tests/unit/test_plan_validator.py`、`tests/api/test_features.py::test_nh_04_plan_generate_approve_checkin_adjust`。
+改确认流程还要跑 `tests/regression/test_regression.py::test_rt_02_plan_versions_match_current`，确认计划状态与版本号正确。

@@ -30,4 +30,4 @@
 - 未登录访问任意业务接口，应返回 401 且 code 为 AUTH_UNAUTHORIZED。
 - 过期 Access Token 应触发一次刷新，刷新失败后清理本地令牌。
 
-对应自动化用例：`tests/api/test_auth.py`、`tests/api/test_flow.py::test_plan_isolation_between_users`。
+对应自动化用例：`tests/api/test_auth.py`、`tests/regression/test_data_scope.py`。

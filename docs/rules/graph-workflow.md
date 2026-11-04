@@ -38,6 +38,6 @@ safety -> supervisor -> collect -> validate -> review_profile -> assess
 
 ## 改动回归范围
 
-改 safety 或 emergency：`tests/unit/test_emergency_router.py`、`tests/api/test_flow.py::test_emergency_message_skips_normal_flow`。
-改中断或恢复：`test_assessment_flow_reaches_report`、`test_checkin_is_idempotent`。
+改 safety 或 emergency：`tests/unit/test_emergency_router.py`、`tests/e2e/test_e2e.py::test_e2e_03_emergency_blocks_normal_flow`。
+改中断或恢复：`tests/e2e/test_e2e.py::test_e2e_04_resume_does_not_duplicate_writes`、`tests/api/test_features.py::test_nh_04_plan_generate_approve_checkin_adjust`。
 改节点顺序：全部 graph 相关用例，并人工走一遍从采集到报告的页面流程。

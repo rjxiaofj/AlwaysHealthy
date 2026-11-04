@@ -1,3 +1,8 @@
+"""NH-01 注册登录与刷新轮换。
+
+档案与 BMI 见 test_features.py 的 NH-02。
+"""
+
 import uuid
 
 
@@ -43,19 +48,6 @@ async def test_duplicate_username_rejected(client):
     await client.post("/api/v1/auth/register", json={"username": username, "password": "demo12345"})
     response = await client.post("/api/v1/auth/register", json={"username": username, "password": "demo12345"})
     assert response.status_code == 409
-
-
-async def test_profile_patch_and_bmi(client, auth):
-    response = await client.patch(
-        "/api/v1/profiles/me",
-        headers=auth,
-        json={"birth_date": "1990-01-01", "sex": "female", "height_cm": 165, "weight_kg": 60},
-    )
-    assert response.status_code == 200
-    data = response.json()["data"]
-    assert data["bmi"] == 22.0
-    assert data["age"] >= 18
-    assert data["profile_version"] >= 2
 
 
 async def test_request_id_present(client):

@@ -79,6 +79,7 @@
 - RT-02 计划版本列表与当前版本一致
 - RT-03 档案变更后历史报告内容不变
 - RT-04 提醒重复访问不重复生成
+- RT-05 跨用户读取计划、任务、报告、会话一律 404
 
 全链路
 
@@ -86,5 +87,17 @@
 - E2E-02 计划确认到打卡到周期总结
 - E2E-03 高危消息阻断普通流程
 - E2E-04 中断后恢复不重复写入
+
+用例落点
+
+| 编号 | 文件 |
+|---|---|
+| NH-01 | `backend/tests/api/test_auth.py` |
+| NH-02 至 NH-07 | `backend/tests/api/test_features.py` |
+| RT-01 至 RT-04 | `backend/tests/regression/test_regression.py` |
+| RT-05 | `backend/tests/regression/test_data_scope.py` |
+| E2E-01 至 E2E-04 | `backend/tests/e2e/test_e2e.py` |
+
+流程片段集中在 `backend/tests/helpers.py`，改确认步骤只改一处。
 
 执行结果见根目录 MEMORY.md。
