@@ -85,7 +85,7 @@ onMounted(async () => {
           </div>
         </div>
         <div class="flex items-center gap-2">
-          <RouterLink to="/profile" class="chip">
+          <RouterLink to="/" class="chip">
             待办提醒
             <span v-if="unread" class="ml-1 font-semibold" :style="{ color: 'var(--color-danger)' }">{{ unread }}</span>
           </RouterLink>
@@ -122,6 +122,7 @@ onMounted(async () => {
           <button class="btn btn-ghost mt-4 w-full" @click="theme.toggle()">
             {{ theme.mode === 'light' ? '深色主题' : '浅色主题' }}
           </button>
+          <button class="btn btn-ghost mt-2 w-full" @click="logout">退出登录</button>
         </div>
       </div>
     </transition>
