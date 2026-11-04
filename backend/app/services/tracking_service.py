@@ -15,9 +15,7 @@ from app.tools.metrics import METRIC_DEFS
 
 
 async def add_metric(session: AsyncSession, user_id: UUID, payload: MetricIn) -> HealthMetricRecord:
-    # 未来时间戳会污染趋势判断，直接拒绝而不是静默改成当前时间
-    if payload.measured_at > datetime.now(UTC) + timedelta(minutes=5):
-        raise ValueError("测量时间不能晚于当前时间")
+    # 时间有效性在 MetricIn 里校验，这里只负责落库
     definition = METRIC_DEFS[payload.metric_code]
     record = HealthMetricRecord(
         user_id=user_id,

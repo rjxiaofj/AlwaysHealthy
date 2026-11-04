@@ -141,6 +141,18 @@ async def test_nh_05_metric_records_and_trends(client, auth):
     assert rejected.status_code == 422
 
 
+async def test_nh_10_future_measured_at_rejected(client, auth):
+    # 未来时间在入参层拒绝，不能落到 500
+    future = (datetime.now(UTC) + timedelta(days=3)).isoformat()
+    response = await client.post(
+        "/api/v1/tracking/metrics",
+        headers=auth,
+        json={"metric_code": "systolic_bp", "value": 130, "measured_at": future},
+    )
+    assert response.status_code == 422
+    assert response.json()["code"] == "INVALID_HEALTH_DATA"
+
+
 async def test_nh_06_report_detail_and_export(client, auth):
     await run_assessment_to_report(client, auth)
 

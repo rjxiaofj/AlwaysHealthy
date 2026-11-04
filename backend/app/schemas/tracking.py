@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID
 
@@ -27,6 +27,16 @@ class MetricIn(BaseModel):
         definition = METRIC_DEFS.get(code)
         if definition and not (definition.low <= value <= definition.high):
             raise ValueError(f"{definition.label} 数值超出可接受范围")
+        return value
+
+    @field_validator("measured_at")
+    @classmethod
+    def not_future(cls, value: datetime) -> datetime:
+        # 未来时间会污染趋势判断，放宽五分钟容忍客户端时钟偏差
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        if value > datetime.now(UTC) + timedelta(minutes=5):
+            raise ValueError("测量时间不能晚于当前时间")
         return value
 
 
