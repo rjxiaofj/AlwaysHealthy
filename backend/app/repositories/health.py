@@ -66,8 +66,20 @@ async def latest_metrics(session: AsyncSession, user_id: UUID, codes: tuple[str,
     )
     latest: dict[str, HealthMetricRecord] = {}
     for row in rows:
+        if not _counting_for_assessment(row):
+            continue
         latest.setdefault(row.metric_code, row)
     return latest
+
+
+def _counting_for_assessment(row: HealthMetricRecord) -> bool:
+    """设备读数只有标记 verified 才进评估快照。
+
+    否则第一次拉取手环就会把估算心率替换掉用户手动录入的血压记录。
+    """
+    if row.source_type != "wearable":
+        return True
+    return (row.measurement_context or {}).get("quality_status") == "verified"
 
 
 async def assessment_of(session: AsyncSession, user_id: UUID, assessment_id: UUID) -> RiskAssessment | None:

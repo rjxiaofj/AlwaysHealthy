@@ -77,6 +77,6 @@ class FileOut(BaseModel):
 
 
 class ConsentIn(BaseModel):
-    consent_type: str = Field(min_length=2, max_length=48)
+    consent_type: Literal["health_data", "ai_analysis"]
     policy_version: str = Field(default="v1", max_length=16)
     granted: bool

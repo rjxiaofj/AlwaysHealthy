@@ -12,6 +12,7 @@ os.environ["JWT_SECRET"] = "test-secret-key-that-is-long-enough-for-hs256"
 import httpx
 import pytest_asyncio
 
+from app.db.session import SessionLocal
 from app.main import app
 
 
@@ -21,6 +22,14 @@ async def client():
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
             yield http
+
+
+@pytest_asyncio.fixture
+async def session():
+    """直接查库的会话，用于断言审计这类没有查询接口的落库结果。"""
+    async with app.router.lifespan_context(app):
+        async with SessionLocal() as db:
+            yield db
 
 
 @pytest_asyncio.fixture

@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import current_user, db_session
+from app.api.deps import current_user, db_session, request_id
 from app.core.response import ok
 from app.db.models import User
 from app.schemas.health import LoginIn, RefreshIn, RegisterIn, UserOut
-from app.schemas.chat import ConsentIn
 from app.services import auth_service
 
 router = APIRouter(tags=["auth"])
@@ -19,19 +18,19 @@ async def register(request: Request, payload: RegisterIn, session: AsyncSession 
 
 @router.post("/auth/login")
 async def login(request: Request, payload: LoginIn, session: AsyncSession = Depends(db_session)):
-    tokens = await auth_service.login(session, payload)
+    tokens = await auth_service.login(session, payload, request_id(request))
     return ok(request, tokens.model_dump())
 
 
 @router.post("/auth/refresh")
 async def refresh(request: Request, payload: RefreshIn, session: AsyncSession = Depends(db_session)):
-    tokens = await auth_service.refresh(session, payload.refresh_token)
+    tokens = await auth_service.refresh(session, payload.refresh_token, request_id(request))
     return ok(request, tokens.model_dump())
 
 
 @router.post("/auth/logout")
 async def logout(request: Request, payload: RefreshIn, session: AsyncSession = Depends(db_session)):
-    await auth_service.logout(session, payload.refresh_token)
+    await auth_service.logout(session, payload.refresh_token, request_id(request))
     return ok(request, None, "已退出")
 
 

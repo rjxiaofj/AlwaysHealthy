@@ -15,6 +15,13 @@
 
 改报告或评估逻辑后，老报告内容不能变。验证方式：生成一份报告，改档案，再读报告，内容应保持一致。
 
+## 指标来源与质量
+
+- `health_metric_records.source_type` 区分 manual、wearable 等来源，`measurement_context` 记设备类型与质量状态。
+- 设备读数只有在 `quality_status=verified` 时才允许进入评估快照，其余只进指标表。
+- 过滤点在 `app/repositories/health.py::latest_metrics`。绕过它取最新值就会让手环估算顶掉用户手动录入的测量。
+- 可穿戴适配统一走 `app/integrations/wearable.py`，厂商差异只在该文件实现。
+
 ## 迁移
 
 - 所有结构变更走 Alembic，`backend/migrations/versions`。

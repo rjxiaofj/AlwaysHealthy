@@ -54,3 +54,45 @@ async def test_request_id_present(client):
     response = await client.get("/health/live")
     assert response.status_code == 200
     assert response.headers["X-Request-ID"].startswith("req_")
+
+
+async def test_nh_08_consent_keeps_history(client, auth):
+    grant = await client.post("/api/v1/consents", headers=auth, json={"consent_type": "health_data", "granted": True})
+    assert grant.status_code == 200
+    revoke = await client.post("/api/v1/consents", headers=auth, json={"consent_type": "health_data", "granted": False})
+    assert revoke.status_code == 200
+    assert revoke.json()["data"]["consent_status"] == "revoked"
+
+    records = await client.get("/api/v1/consents", headers=auth)
+    items = records.json()["data"]
+    # 撤回不覆盖授权记录，历史两条都在
+    assert len(items) == 2
+    assert items[0]["consent_status"] == "revoked"
+    assert items[1]["consent_status"] == "granted"
+    assert items[0]["label"] == "健康数据处理"
+
+
+async def test_nh_08_consent_type_is_limited(client, auth):
+    response = await client.post(
+        "/api/v1/consents",
+        headers=auth,
+        json={"consent_type": "ad_targeting", "granted": True},
+    )
+    assert response.status_code == 422
+
+
+async def test_nh_11_login_failure_written_to_audit(client, session, auth):
+    from sqlalchemy import select
+
+    from app.db.models import SecurityAuditLog
+
+    username = auth["username"]
+    await client.post("/api/v1/auth/login", json={"username": username, "password": "wrongpass1"})
+
+    rows = await session.scalars(
+        select(SecurityAuditLog).where(SecurityAuditLog.action == "login", SecurityAuditLog.result == "fail")
+    )
+    audit_rows = [row for row in rows if row.resource_id == username]
+    assert audit_rows
+    # 审计里不能出现密码
+    assert all("wrongpass1" not in (row.resource_id or "") for row in audit_rows)
