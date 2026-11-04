@@ -1,0 +1,4 @@
+# 可选向量检索依赖，只在 EMBEDDING_BACKEND=bge 时需要
+# 安装后首次启动会下载 BGE-M3 权重并建立 Chroma 索引，耗时较长
+sentence-transformers==5.1.2
+chromadb==0.5.23

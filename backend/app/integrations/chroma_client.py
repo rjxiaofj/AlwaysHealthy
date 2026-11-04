@@ -47,6 +47,8 @@ class VectorRetriever:
                     "version": chunk.version,
                     "dimension": chunk.dimension,
                     "chapter": chunk.chapter,
+                    # chroma 的元数据不收 None，页码用 0 表示没有页码
+                    "page": chunk.page or 0,
                 }
                 for chunk in chunks
             ],
@@ -76,7 +78,7 @@ class VectorRetriever:
                     chunk_id=chunk_id,
                     title=meta["title"],
                     version=meta.get("version", ""),
-                    page=meta.get("page"),
+                    page=meta.get("page") or None,
                     dimension=meta["dimension"],
                     chapter=meta.get("chapter", ""),
                     content=result["documents"][0][index],

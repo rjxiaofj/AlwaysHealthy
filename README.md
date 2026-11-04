@@ -45,7 +45,13 @@ npm run build                      # 产物 frontend/dist 由后端直接返回
 - `DATABASE_URL`：默认 sqlite，换 Postgres 时改成 `postgresql+asyncpg://...`
 - `CHECKPOINTER`：`memory` 或 `postgres`，后者需要 `DATABASE_URL` 指向 Postgres
 - `LLM_API_KEY`：DeepSeek 兼容接口密钥，留空时降级到规则回答
-- `EMBEDDING_BACKEND`：`keyword` 走 TF-IDF，`bge` 走 BGE-M3 加 Chroma
+- `EMBEDDING_BACKEND`：`keyword` 走本地 TF-IDF，`bge` 走 BGE-M3 加 Chroma
+
+切到 `bge` 之前先装可选依赖，首次启动会下载模型权重并建索引：
+
+```bash
+pip install -r requirements-vector.txt
+```
 
 ## 测试
 
