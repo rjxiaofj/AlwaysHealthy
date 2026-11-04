@@ -1,0 +1,279 @@
+:root {
+  color-scheme: light;
+  --color-bg: #f2f3f6;
+  --color-bg-secondary: #e9ebf0;
+  --color-surface: #ffffff;
+  --color-surface-glass: rgba(255, 255, 255, 0.62);
+  --color-surface-glass-strong: rgba(255, 255, 255, 0.84);
+  --color-text-primary: #17191d;
+  --color-text-secondary: #626873;
+  --color-text-tertiary: #858b96;
+  --color-border: rgba(35, 40, 50, 0.08);
+  --color-glass-border: rgba(255, 255, 255, 0.78);
+  --color-shadow: rgba(25, 31, 43, 0.08);
+  --color-primary: #17191d;
+  --color-success: #279b62;
+  --color-warning: #d88924;
+  --color-danger: #d94343;
+  --color-info: #3478c6;
+  --color-neutral: #858b96;
+  --glass-blur-card: 20px;
+  --glass-blur-panel: 24px;
+  --radius-card: 24px;
+  --radius-control: 16px;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+  --color-bg: #17191e;
+  --color-bg-secondary: #20242b;
+  --color-surface: #252a32;
+  --color-surface-glass: rgba(38, 43, 52, 0.7);
+  --color-surface-glass-strong: rgba(43, 49, 59, 0.9);
+  --color-text-primary: #f4f5f7;
+  --color-text-secondary: #c0c5ce;
+  --color-text-tertiary: #969eaa;
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-glass-border: rgba(255, 255, 255, 0.16);
+  --color-shadow: rgba(0, 0, 0, 0.24);
+  --color-primary: #f4f5f7;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(900px 520px at 12% -10%, rgba(255, 255, 255, 0.9), transparent 60%),
+    radial-gradient(700px 480px at 92% 8%, rgba(232, 236, 244, 0.9), transparent 62%),
+    radial-gradient(600px 420px at 60% 110%, rgba(255, 255, 255, 0.7), transparent 60%);
+}
+
+[data-theme='dark'] body::before {
+  background:
+    radial-gradient(900px 520px at 12% -10%, rgba(64, 71, 84, 0.55), transparent 60%),
+    radial-gradient(700px 480px at 92% 8%, rgba(43, 49, 59, 0.7), transparent 62%);
+}
+
+.glass {
+  background: var(--color-surface-glass);
+  border: 1px solid var(--color-glass-border);
+  border-radius: var(--radius-card);
+  box-shadow: 0 10px 30px var(--color-shadow);
+  -webkit-backdrop-filter: blur(var(--glass-blur-card)) saturate(135%);
+  backdrop-filter: blur(var(--glass-blur-card)) saturate(135%);
+}
+
+.glass-strong {
+  background: var(--color-surface-glass-strong);
+  border: 1px solid var(--color-glass-border);
+  border-radius: var(--radius-card);
+  box-shadow: 0 12px 36px var(--color-shadow);
+  -webkit-backdrop-filter: blur(var(--glass-blur-panel)) saturate(130%);
+  backdrop-filter: blur(var(--glass-blur-panel)) saturate(130%);
+}
+
+@supports not ((backdrop-filter: blur(1px))) {
+  .glass,
+  .glass-strong {
+    background: var(--color-surface);
+  }
+}
+
+.card-pad {
+  padding: 22px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease, opacity 160ms ease;
+  white-space: nowrap;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: var(--color-bg);
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  border-color: rgba(35, 40, 50, 0.22);
+}
+
+[data-theme='dark'] .btn-ghost:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.btn-danger {
+  background: transparent;
+  border-color: rgba(217, 67, 67, 0.4);
+  color: var(--color-danger);
+}
+
+.field {
+  width: 100%;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-glass-strong);
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.field:focus {
+  border-color: rgba(23, 25, 29, 0.35);
+  box-shadow: 0 0 0 3px rgba(23, 25, 29, 0.06);
+}
+
+[data-theme='dark'] .field:focus {
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
+}
+
+.label {
+  display: block;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  background: rgba(133, 139, 150, 0.12);
+  color: var(--color-text-secondary);
+}
+
+.level-low {
+  color: var(--color-success);
+  background: rgba(39, 155, 98, 0.12);
+}
+
+.level-mid {
+  color: var(--color-warning);
+  background: rgba(216, 137, 36, 0.14);
+}
+
+.level-high {
+  color: var(--color-danger);
+  background: rgba(217, 67, 67, 0.12);
+}
+
+.level-unknown {
+  color: var(--color-neutral);
+  background: rgba(133, 139, 150, 0.14);
+}
+
+.divider {
+  height: 1px;
+  background: var(--color-border);
+}
+
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(133, 139, 150, 0.4) transparent;
+}
+
+.scroll-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: rgba(133, 139, 150, 0.35);
+  border-radius: 3px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  text-decoration: none;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.nav-item:hover {
+  background: rgba(23, 25, 29, 0.04);
+  color: var(--color-text-primary);
+}
+
+.nav-item.router-link-active {
+  background: var(--color-primary);
+  color: var(--color-bg);
+}
+
+[data-theme='dark'] .nav-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 180ms ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

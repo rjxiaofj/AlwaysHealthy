@@ -1,0 +1,98 @@
+import { api } from './client'
+import type {
+  Assessment,
+  AssessmentSummary,
+  ChatMessage,
+  Conversation,
+  FileItem,
+  PageData,
+  Plan,
+  PlanSummary,
+  Profile,
+  Reminder,
+  ReportDetail,
+  ReportSummary,
+  Task,
+  TokenPayload,
+  TrackingSummary,
+  Trend,
+  UserInfo,
+} from './types'
+
+export const authApi = {
+  register: (username: string, password: string) =>
+    api<TokenPayload>('/auth/register', { body: { username, password } }),
+  login: (username: string, password: string) => api<TokenPayload>('/auth/login', { body: { username, password } }),
+  logout: (refreshToken: string) => api<null>('/auth/logout', { body: { refresh_token: refreshToken } }),
+  me: () => api<UserInfo>('/users/me'),
+}
+
+export const profileApi = {
+  get: () => api<Profile>('/profiles/me'),
+  patch: (payload: Record<string, unknown>) => api<Profile>('/profiles/me', { method: 'PATCH', body: payload }),
+  addHistory: (payload: { history_type: string; condition_code: string; description?: string }) =>
+    api<{ id: string }>('/profiles/me/histories', { body: payload }),
+  upload: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api<{ id: string; parse_status: string }>('/profiles/me/documents', { formData: form })
+  },
+  files: () => api<FileItem[]>('/profiles/me/documents'),
+}
+
+export const chatApi = {
+  create: (title?: string) => api<{ id: string; thread_id: string }>('/conversations', { body: { title } }),
+  list: () => api<Conversation[]>('/conversations'),
+  detail: (id: string) => api<{ id: string; title: string; status: string }>(`/conversations/${id}`),
+  messages: (id: string) => api<ChatMessage[]>(`/conversations/${id}/messages`),
+}
+
+export const assessmentApi = {
+  create: () => api<Assessment>('/assessments', { body: {} }),
+  list: (page = 1, pageSize = 10) =>
+    api<PageData<AssessmentSummary>>('/assessments', { params: { page, page_size: pageSize } }),
+  latest: () => api<Assessment | null>('/assessments/latest'),
+  detail: (id: string) => api<Assessment>(`/assessments/${id}`),
+}
+
+export const planApi = {
+  generate: (durationDays: number, goal?: string) =>
+    api<Plan>('/plans/generate', { body: { duration_days: durationDays, goal } }),
+  list: () => api<PlanSummary[]>('/plans'),
+  detail: (id: string) => api<Plan>(`/plans/${id}`),
+  approve: (id: string, versionId: string) =>
+    api<Plan>(`/plans/${id}/approve`, { body: { version_id: versionId } }),
+  adjust: (id: string, reason: string) => api<{ version_id: string }>(`/plans/${id}/adjust`, { body: { reason } }),
+  cancel: (id: string) => api<null>(`/plans/${id}/cancel`, { body: {} }),
+  checkin: (taskId: string, status: string, feedback?: string) =>
+    api<{ id: string; status: string }>(`/tasks/${taskId}/checkins`, { body: { status, feedback } }),
+  patchTask: (taskId: string, payload: { scheduled_time?: string; reminder_enabled?: boolean }) =>
+    api<Task>(`/tasks/${taskId}`, { method: 'PATCH', body: payload }),
+}
+
+export const trackingApi = {
+  addMetric: (metricCode: string, value: number, measuredAt: string, context: Record<string, unknown> = {}) =>
+    api<{ id: string }>('/tracking/metrics', {
+      body: { metric_code: metricCode, value, measured_at: measuredAt, context },
+    }),
+  metrics: (codes: string[], days: number) =>
+    api<PageData<Record<string, unknown>>>('/tracking/metrics', {
+      params: { codes: codes.join(','), days, page: 1, page_size: 200 },
+    }),
+  feedback: (payload: Record<string, unknown>) => api<{ id: string }>('/tracking/feedback', { body: payload }),
+  summary: (planId?: string) => api<TrackingSummary>('/tracking/summary', { params: { plan_id: planId } }),
+  trends: (codes: string[], days: number) =>
+    api<Trend[]>('/tracking/trends', { params: { codes: codes.join(','), days } }),
+  reassessment: (reason: string) => api<null>('/tracking/reassessment', { body: { reason } }),
+}
+
+export const reportApi = {
+  list: () => api<ReportSummary[]>('/reports'),
+  detail: (id: string) => api<ReportDetail>(`/reports/${id}`),
+  exportUrl: (id: string) => `${window.location.origin}/api/v1/reports/${id}/export`,
+}
+
+export const reminderApi = {
+  list: () => api<Reminder[]>('/reminders'),
+  read: (id: string) => api<null>(`/reminders/${id}/read`, { body: {} }),
+}
