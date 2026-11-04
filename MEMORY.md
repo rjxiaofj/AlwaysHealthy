@@ -64,6 +64,27 @@
 | E2E-03 | 高危文本 | 无 confirmation，含 120 与急诊，无评估与计划 | 符合 | 无 |
 | E2E-04 | 两次中断两次恢复 | 评估计划报告各一条，重复确认计划返回 409 | 符合 | 无 |
 
+## 2026-11-04 补 P0 缺口
+
+对照 FDE 1.5.1 与 9.2 的页面清单，补四处未落地的功能。影响分析见 `docs/impact/2026-11-04-completion-gaps.md`。
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| NH-08 | 先授权健康数据处理再撤回 | 两条记录都在，最近一条为 revoked | 符合，标签回填为健康数据处理 | 无 |
+| NH-08 | 提交 consent_type 为 ad_targeting | 422 | 符合 | 无 |
+| NH-09 | 设备读数 quality_status 为 pending | 不进入评估快照 | 符合 | 无 |
+| NH-09 | 设备读数 quality_status 为 verified | 进入评估快照 | 符合 | 无 |
+| NH-09 | 单位与指标定义不符 | 构造时报错 | 符合，bpm 与 kg 混用被拒 | 无 |
+| NH-10 | 测量时间写成三天后 | 422 INVALID_HEALTH_DATA | 符合；改动前是 500 INTERNAL_ERROR | app/services/tracking_service.py 曾抛裸 ValueError |
+| NH-11 | 用错误密码登录 | 写一条审计，结果为 fail | 符合，审计里没有密码 | 无 |
+| S-02 | 启动服务访问 / 与 /health/live | 200 | 符合 | 无 |
+| S-03 | 登录后取周期总结 | 返回周期、完成率、提示 | 符合，任务 3 项完成 0 | 无 |
+| S-04 | 提交身体感受反馈 | 200 并落库 | 符合 | 无 |
+| S-05 | 未带令牌访问 /api/v1/plans | 401 | 符合 | 无 |
+| B-03 | 前端类型检查与构建 | 无错误 | 通过，ProfileView 产物 13.08 kB | 无 |
+
+汇总：`pytest` 67 项通过。
+
 ## 已知取舍
 
 1. 知识检索默认走关键词通道。BGE-M3 与 Chroma 的代码保留在 `app/integrations/chroma_client.py`，需要安装 torch 与 chromadb 并下载模型权重后把 `EMBEDDING_BACKEND` 切到 bge。两套索引独立，不混用向量。
