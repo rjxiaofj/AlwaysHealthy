@@ -11,8 +11,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import as_utc
 from app.db.models import HealthMetricRecord
 from app.tools.metrics import METRIC_DEFS
 
@@ -72,9 +74,26 @@ class WearableDataAdapter(ABC):
 
 
 async def ingest(session: AsyncSession, user_id: UUID, adapter: WearableDataAdapter) -> int:
-    """写入适配器返回的读数，返回写入条数。"""
+    """写入适配器返回的读数，返回实际写入条数。
+
+    设备常常重发同一时间窗的数据，按指标与测量时间去重，避免指标表被重复记录灌满。
+    """
     readings = await adapter.fetch(user_id)
+    if not readings:
+        return 0
+
+    rows = await session.scalars(
+        select(HealthMetricRecord.measured_at).where(
+            HealthMetricRecord.user_id == user_id,
+            HealthMetricRecord.source_type == SOURCE_WEARABLE,
+        )
+    )
+    seen = {as_utc(value) for value in rows}
+
+    written = 0
     for item in readings:
+        if as_utc(item.measured_at) in seen:
+            continue
         session.add(
             HealthMetricRecord(
                 user_id=user_id,
@@ -90,6 +109,8 @@ async def ingest(session: AsyncSession, user_id: UUID, adapter: WearableDataAdap
                 source_type=SOURCE_WEARABLE,
             )
         )
-    if readings:
+        seen.add(as_utc(item.measured_at))
+        written += 1
+    if written:
         await session.commit()
-    return len(readings)
+    return written

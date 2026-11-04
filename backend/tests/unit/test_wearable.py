@@ -9,6 +9,7 @@ from app.integrations.wearable import (
     QUALITY_VERIFIED,
     WearableDataAdapter,
     WearableReading,
+    ingest,
 )
 from app.repositories.health import _counting_for_assessment
 
@@ -19,6 +20,17 @@ class FakeAdapter(WearableDataAdapter):
 
     async def fetch(self, user_id):
         return []
+
+
+class FixedAdapter(WearableDataAdapter):
+    source = "fake"
+    device_type = "smartwatch"
+
+    def __init__(self, readings):
+        self._readings = readings
+
+    async def fetch(self, user_id):
+        return self._readings
 
 
 def reading(**overrides) -> WearableReading:
@@ -90,3 +102,15 @@ def test_verified_wearable_reading_counts():
 def test_manual_reading_always_counts():
     row = metric_row("manual", None)
     assert _counting_for_assessment(row) is True
+
+
+async def test_ingest_skips_repeated_readings(session):
+    user_id = uuid4()
+    adapter = FixedAdapter([reading(metric_code="heart_rate", value=68, unit="bpm")])
+
+    first = await ingest(session, user_id, adapter)
+    second = await ingest(session, user_id, adapter)
+
+    # 设备重发同一时间窗的数据不应重复入库
+    assert first == 1
+    assert second == 0
