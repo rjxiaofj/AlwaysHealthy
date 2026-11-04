@@ -85,8 +85,9 @@
 | NH-09 | 同一适配器连续拉取两次 | 第二次写入 0 条 | 符合 | 无 |
 | B-04 | 顶部提醒入口点击 | 进入健康首页查看未读 | 改动前跳到个人中心，那里没有提醒列表 | frontend/src/layouts/AppLayout.vue |
 | M-03 | 初始迁移是否含授权与审计表 | 建表语句齐全 | 符合 | 无 |
+| RT-02 | 先生效一份计划再生效第二份 | 旧计划与其版本都不再是 active | 改动前旧计划状态变了但版本仍是 active | app/services/plan_service.py |
 
-汇总：`pytest` 68 项通过。
+汇总：`pytest` 69 项通过。
 
 ## 已知取舍
 
@@ -100,4 +101,6 @@
 1. 五维阈值来自公开指南要点，正式面向真实用户前需逐条核对原文与适用人群。
 2. PHQ-2 与 PHQ-9 的中文验证版本与授权条件未核实，当前只用于演示量表分级。
 3. 急救电话为配置项，默认 120，部署到其他地区必须改。
-4. BGE-M3 在本机的加载耗时与内存占用未测。
+4. BGE-M3 在本机的加载耗时与内存占用未测。向量通道代码已就位，依赖见 `backend/requirements-vector.txt`。
+5. Docker Compose 未在本机实跑，环境没有 docker 命令。镜像构建链路与健康检查只能上线时验证。
+6. Postgres 下的迁移升降级未实测，本地只跑了 sqlite。`sa.JSON().with_variant(JSONB)` 与检查点表需要在 Postgres 上再跑一次 `alembic upgrade head`。
