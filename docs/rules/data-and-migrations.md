@@ -21,6 +21,7 @@
 - 设备读数只有在 `quality_status=verified` 时才允许进入评估快照，其余只进指标表。
 - 过滤点在 `app/repositories/health.py::latest_metrics`。绕过它取最新值就会让手环估算顶掉用户手动录入的测量。
 - 可穿戴适配统一走 `app/integrations/wearable.py`，厂商差异只在该文件实现。
+- 同一指标同一测量时间的设备读数只入库一次，去重点在 `wearable.ingest`。
 
 ## 迁移
 
