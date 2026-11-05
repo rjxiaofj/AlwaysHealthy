@@ -61,6 +61,7 @@
 - 设备读数只有 `quality_status=verified` 才允许进入评估快照，其余只进指标表，过滤点在 `app/repositories/health.py::latest_metrics`。
 - 体检资料的识别结果只进 `file_assets.parsed_payload`，用户确认后才写 `health_metric_records`。不做 OCR，解析不出来的保持 `unsupported`，不得用模型猜字段。
 - `security_audit_logs` 与 `consent_records` 只追加不覆盖。审计不得记录密码、令牌原文、完整档案。`result` 列只有 16 个字符，只能写短状态词，自由文本写日志。
+- `knowledge_sources` 由 `knowledge_service.sync_sources` 在启动时从 `knowledge/*.md` 的文件头生成，按 `source_id` 幂等，文件 sha256 变了才更新。要改资料出处就改文件头，不要直接改这张表。
 - Redis 只做缓存与短期协调。禁止把档案、评估、计划版本、打卡记录只写 Redis。
 - 迁移全部走 Alembic，不手改演示库。
 
