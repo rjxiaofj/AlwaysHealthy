@@ -59,9 +59,11 @@
 - `plan_adjustment_records.approval_status` 必须随审批收敛：确认置 `approved`，放弃置 `rejected`，两种情况都要填 `confirmed_at`，不允许停在 `pending`。调整产生的草稿不占 `current_version_id`。
 - 打卡、提醒、报告创建必须幂等。打卡唯一键 `(task_id, checkin_date)`，重复提交返回已有记录而不是新增。
 - 任务级提醒开关 `plan_tasks.reminder_enabled` 只在 `reminder_service.sync` 里判断，管的是当天任务待完成提醒。计划级提醒不受它影响。新建设置默认开启，复制版本时沿用原任务的值。
-- 设备读数只有 `quality_status=verified` 才允许进入评估快照，其余只进指标表，过滤点在 `app/repositories/health.py::latest_metrics`。
+- 设备读数只有 `quality_status=verified` 才允许进入评估快照，其余只进指标表，过滤点在 `app/repositories/health.py::latest_metrics`。质量状态只写 `health_metric_records.quality_status` 列，不要再写进 `measurement_context`，两份真相迟早对不上。
+- `file_assets.admission_status` 记入库前准入校验结果，只做扩展名、大小与文件头校验，不做病毒扫描，不要写让人误以为杀过毒的值。
 - 体检资料的识别结果只进 `file_assets.parsed_payload`，用户确认后才写 `health_metric_records`。不做 OCR，解析不出来的保持 `unsupported`，不得用模型猜字段。
 - `security_audit_logs` 与 `consent_records` 只追加不覆盖。审计不得记录密码、令牌原文、完整档案。`result` 列只有 16 个字符，只能写短状态词，自由文本写日志。
+- `security_incidents` 只从登录连续失败采集，实现在 `security_service.note_login_failure`。同一账号窗口内只留一条未处置事件，读取只给管理员。
 - `knowledge_sources` 由 `knowledge_service.sync_sources` 在启动时从 `knowledge/*.md` 的文件头生成，按 `source_id` 幂等，文件 sha256 变了才更新。要改资料出处就改文件头，不要直接改这张表。
 - Redis 只做缓存与短期协调。禁止把档案、评估、计划版本、打卡记录只写 Redis。
 - 迁移全部走 Alembic，不手改演示库。

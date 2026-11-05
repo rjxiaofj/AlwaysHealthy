@@ -316,6 +316,45 @@
 
 `adjust` 是原样复制任务，用户写「任务太多想减到两项」也不会有一条任务变少，原因只是记在库里。现在 `detail` 直接返回 `pending_version` 与它的任务清单，待确认视图里可以逐条删，确认后按删除后的结果生效。删的是草稿里的新行，原版本任务与打卡都不动。`pytest` 141 项通过。
 
+## 2026-11-05 指标质量状态单一真相
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| MQ-01 | 设备读数入库后查库 | 列被写入，JSON 里不再有状态 | 改动前列恒 `valid`、状态藏在 `measurement_context`，过滤读 JSON | integrations/wearable.py::ingest |
+| MQ-02 | `pending` 设备读数 | 不进评估快照 | 符合，按列判断 | 无 |
+| MQ-03 | 手工录入不带状态 | 列写 `valid` | 符合 | 无 |
+| MQ-04 | 请求体传非法状态 | 拒绝 | 422 `INVALID_HEALTH_DATA` | 无 |
+| MQ-05 | 只改 JSON 不改列 | 不因 JSON 写了 verified 就放行 | 符合，按未核验处理 | 无 |
+| MQ-06 | 容器 Postgres 上降级再升级 | 历史行按 JSON 回填到列 | 符合，`pending` 与 `verified` 各自归位，文件列同步改名回填 | 无 |
+
+原来同一个状态存在列与 JSON 两处，列恒 `valid`，过滤读 JSON。谁按列过滤都会把消费级设备的估算值当已验证数据算进风险等级。现在列是唯一真相，`context` 退回纯设备上下文，接口传状态要过校验。迁移 `c4f8a1d6e2b9` 按方言分支回填历史行。`pytest` 153 项通过。
+
+## 2026-11-05 文件准入状态
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| FA-01 | 正常 PDF 上传 | 记通过准入 | 符合，`admission_status=passed` | 无 |
+| FA-02 | 文件头不符的 PDF | 拒绝且不落库 | 400 `FILE_REJECTED`，该用户无文件记录 | 无 |
+| FA-03 | 历史行 | 从 skipped 回填为 passed | 符合 | 无 |
+| FA-04 | 容器实测正常与伪造两种上传 | 与用例一致 | 符合，库里只有通过准入的两行 | 无 |
+
+`scan_status` 固定写 `skipped`，看起来像没检查，其实扩展名、大小、文件头三道校验一直都有。改名为 `admission_status` 并写 `passed`，迁移 `d9b2c7e4a1f3` 同时改默认值与回填。
+
+## 2026-11-05 登录失败聚合为安全事件
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| SI-01 | 连续 4 次错密码 | 不产生事件 | 符合 | 无 |
+| SI-02 | 第 5 次错密码 | 产生一条 `login_bruteforce` | 符合，`severity=medium`、`status=open` | 无 |
+| SI-03 | 继续错 3 次 | 不新增 | 符合，窗口内只有一条 | 无 |
+| SI-04 | 两个账号各自连错 | 各一条互不覆盖 | 符合 | 无 |
+| SI-05 | 普通用户访问事件接口 | 403 | 符合 | 无 |
+| SI-06 | 管理员访问 | 200 且能读到该条 | 符合 | 无 |
+| SI-07 | 容器实测 6 次错密码 | 只落一条 | 符合，改管理员后接口能读到 | 无 |
+| SI-08 | 账号含下划线的两组失败 | 各自一条互不覆盖 | 符合，`u_a_b` 与 `uXaXb` 都只各自一条，去重改用 `startswith(..., autoescape=True)` | 无 |
+
+第一次实现时阈值永远触发不了：本次失败的审计还没提交，统计差一条。现在统计前先 `flush`。`security_incidents` 从空壳变成有采集、有查询、有权限边界，且没有把越权 404 这种噪声拉进来。`pytest` 153 项通过。
+
 ## 已知取舍
 
 1. 知识检索默认走关键词通道。BGE-M3 与 Chroma 的代码保留在 `app/integrations/chroma_client.py`，需要安装 torch 与 chromadb 并下载模型权重后把 `EMBEDDING_BACKEND` 切到 bge。两套索引独立，不混用向量。
@@ -335,3 +374,4 @@
 6. Postgres 上的 upgrade 与 downgrade 都实测过，一次性库上完成升降循环，见 M-04 至 M-08。
 7. `~/.docker/daemon.json` 里加的 `registry-mirrors` 已被 Docker Desktop 覆盖回默认，现在文件里只剩 `builder` 与 `experimental`，`docker info` 没有 Mirrors 项。镜像是本地构建，拉取不受影响，换机部署前要在 Docker Desktop 设置里重新加。
 8. 资料解析的规则按常见检验单写法覆盖，手头没有真实报告样本。真实排版的字段名变体、跨页表格、竖排文字都还没验过，拿到样本后要补规则与用例。
+9. 容器实库上跑 `alembic check` 会报 LangGraph checkpointer 的四张表（`checkpoints`、`checkpoint_writes`、`checkpoint_blobs`、`checkpoint_migrations`）是「待删除」，因为这几张表由 checkpointer 自己建、不在模型里。这是噪音，不是漏迁移。空库上跑 check 才是可比对的信号。

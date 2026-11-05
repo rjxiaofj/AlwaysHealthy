@@ -17,15 +17,18 @@
 
 ## 指标来源与质量
 
-- `health_metric_records.source_type` 区分 manual、wearable 等来源，`measurement_context` 记设备类型与质量状态。
+- `health_metric_records.source_type` 区分 manual、wearable 等来源，`measurement_context` 只记设备类型与来源。
+- 质量状态只有一处真相：`health_metric_records.quality_status` 列。取值 `valid` 人工录入与确认后的体检解析结果、`pending` 未核验的设备读数、`verified` 已核验、`rejected` 已判废。禁止再把状态写进 `measurement_context`，2026-11-05 之前就是两份真相并存，谁按列过滤都会把 pending 数据当成已验证。
 - 设备读数只有在 `quality_status=verified` 时才允许进入评估快照，其余只进指标表。
 - 过滤点在 `app/repositories/health.py::latest_metrics`。绕过它取最新值就会让手环估算顶掉用户手动录入的测量。
+- `POST /tracking/metrics` 的 `context.quality_status` 会被校验，非法值返回 `INVALID_HEALTH_DATA`。这一栏来自请求体，不校验等于允许往状态列写任意字符串。
 - 可穿戴适配统一走 `app/integrations/wearable.py`，厂商差异只在该文件实现。
 - 同一指标同一测量时间的设备读数只入库一次，去重点在 `wearable.ingest`。
 
 ## 资料解析
 
 - 体检资料上传后立刻解析，状态落在 `file_assets.parse_status`：`parsed`、`unsupported`、`failed`。不存在长期停在 `pending` 的中间态。
+- `file_assets.admission_status` 记入库前的准入校验结果，通过写 `passed`。校验内容是扩展名白名单、单文件大小上限、文件头签名与扩展名一致，**不做病毒扫描**，列值不要写成 `verified` 之类让人误以为杀过毒。被拒的请求在写盘前就抛错，库里不该出现失败态。
 - 识别结果只写 `file_assets.parsed_payload`，用户逐项确认后才写 `health_metric_records`，来源记 `document`。跳过确认直接入库会让认错的数字顺着评估链路放大成错误风险等级。
 - 只解析 PDF 文本层，不做 OCR。图片与扫描件记 `unsupported` 并保留原件，不用模型猜字段。
 - 命中值必须落在 `app/tools/metrics.py` 的取值区间内，超出即丢弃。报告用 mg/dL 时按指标系数换算，换算后再校验区间。

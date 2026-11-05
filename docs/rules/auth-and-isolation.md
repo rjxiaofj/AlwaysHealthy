@@ -31,6 +31,14 @@
 - 知情同意每发生一次状态变化写一条 `consent_records`，授权与撤回都留痕，撤回不覆盖旧记录。
 - 同意类型只开放 `health_data` 与 `ai_analysis`，新增类型要同步前端文案与授权说明。
 
+## 安全事件
+
+- `security_incidents` 目前只有一个采集点：登录连续失败。窗口 15 分钟、阈值 5 次，同一账号在窗口内只留一条未处置事件。
+- 采集实现在 `app/services/security_service.py::note_login_failure`，由 `auth_service.login` 的失败分支调用。统计前必须 `flush`，否则本次失败的审计还没进事务，统计永远差一条，阈值一辈子触发不了。
+- `description` 固定前缀 `account=<用户名>`，去重靠这个前缀精确匹配，避免 `demo` 与 `demo2` 互相吃掉对方的事件。禁止把密码、令牌、请求体写进这一栏。
+- 不拿越权 404 做采集点。正常使用里的 404 噪声会淹掉真实信号，越权行为靠接口用例覆盖而不是靠事件表。
+- 读取只开 `GET /security/incidents`，用 `admin_user` 依赖，按数据库里的 `role` 判断，不看令牌里的 role。项目没有后台管理系统，没有页面入口，查事件走接口或直接查库。
+
 ## 越权自测清单
 
 - 用户 A 拿用户 B 的 plan_id 请求 `/plans/{id}`，应返回 404。
