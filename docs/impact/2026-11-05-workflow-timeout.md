@@ -34,3 +34,21 @@
 - 150 秒是硬上限。长对话（多轮确认 + 重新评估）如果本来就要跑更久，会被截断。真要按需放宽，应该按运行类型分别设，而不是全局调大。
 - 超时只覆盖「工作流跑不完」。LLM 单次调用 45 秒 + 一次重试 = 90 秒的粒度没变，那段仍可能在预算内白白消耗。
 - 取消依赖 LangGraph 对 `CancelledError` 的处理：内存 checkpointer 下实测能干净退出；Postgres checkpointer 上（部署形态）还没在真库里验过断点状态是否一致，容器冒烟不含这一条。
+
+## 补记：按运行类型分档（同日后续）
+
+上面「取舍」第一条说「应该按运行类型分别设」。这次落地：
+
+- `config.py` 加 `WORKFLOW_TIMEOUT_LONG`（默认 150）与 `WORKFLOW_TIMEOUT_SHORT`（默认 60），`workflow_timeout_seconds` 保留为兜底默认。
+- `graph_service._budget_for(settings, content)`：进图前用 `supervisor.detect`（纯关键词匹配，零成本）预判 intent，`assessment`/`plan_adjust` 走 long，`consult`/`tracking`/`report` 走 short，判不出（空文本或 resume）退回到兜底。
+- `start_run` 传预判预算，`resume_run` 显式传 `workflow_timeout_long`（确认卡片补答后继续的是长链）。
+
+收益：一句咨询不用再等满 150 秒才止损，60 秒就收口；评估长链仍保有充足预算。预算来自配置而非魔法数，可独立调。
+
+| 编号 | 输入 | 期望 |
+|---|---|---|
+| BUD-01~06 | 评估/调整计划/咨询/打卡/查报告/裸报数据 | 前两者 150，后四者 60 |
+| BUD-07 | 空文本 | 退回兜底 150 |
+| BUD-08 | 自定义配置 | 三档都从 settings 读 |
+
+后端 262 → 270 项。

@@ -16,6 +16,7 @@ from app.graph.main_graph import build_main_graph
 from app.repositories import chat as chat_repo
 from app.repositories import plan as plan_repo
 from app.services import assessment_service, conversation_service, plan_service, report_service
+from app.agents import supervisor
 
 log = get_logger(__name__)
 
@@ -52,6 +53,25 @@ class RunContext:
     extra: dict[str, Any] = field(default_factory=dict)
 
 
+# 长链 intent：要走 collect→assess→plan→report 多个 LLM 节点，预算给足
+_LONG_INTENTS = {"assessment", "plan_adjust"}
+
+
+def _budget_for(settings, content: str | None) -> float:
+    """按用户这句话预判的运行类型选超时预算。
+
+    在进图之前用 supervisor.detect 预判 intent（纯关键词匹配，零成本），
+    长链给 workflow_timeout_long，短链给 workflow_timeout_short。判不出或
+    resume 补答时退回到 workflow_timeout_seconds 兜底。
+    """
+    if not content:
+        return settings.workflow_timeout_seconds
+    intent = supervisor.detect(content)
+    if intent in _LONG_INTENTS:
+        return settings.workflow_timeout_long
+    return settings.workflow_timeout_short
+
+
 class GraphService:
     def __init__(self, deps: GraphDeps, checkpointer=None):
         self.graph = build_main_graph(deps, checkpointer)
@@ -85,7 +105,7 @@ class GraphService:
             "emergency_triggered": False,
         }
         yield ("run_started", {"run_id": str(ctx.run_id), "conversation_id": str(conversation_id)})
-        async for event in self._stream(state_in, ctx, resume=False):
+        async for event in self._stream(state_in, ctx, resume=False, budget=_budget_for(self.settings, content)):
             yield event
 
     async def resume_run(self, user_id: UUID, run_id: UUID, payload):
@@ -114,14 +134,16 @@ class GraphService:
 
         decision = {"decision": payload.decision, "feedback": payload.feedback or ""}
         yield ("run_started", {"run_id": str(run_id), "conversation_id": str(ctx.conversation.id)})
-        async for event in self._stream(Command(resume=decision), ctx, resume=True):
+        # 确认卡片补答后继续的是评估/计划长链，按长预算收口
+        async for event in self._stream(Command(resume=decision), ctx, resume=True, budget=self.settings.workflow_timeout_long):
             yield event
 
-    async def _stream(self, graph_input, ctx: RunContext, resume: bool):
+    async def _stream(self, graph_input, ctx: RunContext, resume: bool, budget: float | None = None):
         config = self._config(ctx.conversation.thread_id)
         interrupted: dict[str, Any] | None = None
         reply = ""
-        budget = self.settings.workflow_timeout_seconds
+        if budget is None:
+            budget = self.settings.workflow_timeout_seconds
         try:
             # 单个节点卡住（模型不返回、检索挂起）时 astream 会一直等。空闲与总时长
             # 两道闸在前端，但前端断连不会让这里停下，run 会一直挂在 running

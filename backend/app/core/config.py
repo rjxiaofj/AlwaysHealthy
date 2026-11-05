@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     # 一次工作流的总预算。前端另有 180 秒兜底，这条必须更短：先由后端自己收口，
     # 才能把 run 标成 failed；反过来是前端先断连、后端还在算，状态停在 running
     workflow_timeout_seconds: float = 150.0
+    # 按运行类型分档：评估/调整计划是 collect→assess→plan→report 长链，多轮 LLM 调用，
+    # 给足预算；咨询/打卡/查报告是单节点短链，几十秒就该结束，压短些能更早止损。
+    # workflow_timeout_seconds 仍作为兜底默认，两档都未命中时用它。
+    workflow_timeout_long: float = 150.0
+    workflow_timeout_short: float = 60.0
 
     # keyword 走本地关键词检索，bge 走 BGE-M3 + Chroma
     embedding_backend: str = "keyword"
