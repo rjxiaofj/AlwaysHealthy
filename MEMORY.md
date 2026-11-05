@@ -422,6 +422,18 @@
 
 `PlansView.vue` 里六处判定与任务分组原本是内联 computed，模板与逻辑缠在一起，只能靠点页面验。抽到 `views/planLogic.ts` 后由 29 条单测守着，组件只剩取值与渲染。抽的过程里发现 T-10 那个清空时间的缺陷，纯函数化本身就是为了让这种分支能被断言。
 
+## 2026-11-05 CI
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| CI-01 | `pytest -q`，工作目录 `backend` | 156 项通过 | 符合，28.7 秒 | 无 |
+| CI-02 | `npm ci`，工作目录 `frontend` | 锁文件与 package.json 一致，装完可跑 | 符合，158 个包 | 无 |
+| CI-03 | 干净安装后跑 test / type-check / build | 三条都过 | 符合，45 项、无类型错误、构建 7.6 秒 | 无 |
+| CI-04 | PyYAML 解析 `.github/workflows/ci.yml` | 两个 job，步骤顺序正确 | 符合 | 无 |
+| CI-05 | 连续 push 两次 | 只跑最后一次 | 靠 `concurrency.cancel-in-progress` 实现，未实测 | 无 |
+
+测试写完却没人自动跑，等于靠记性。上一轮 conftest 路径那个问题只在「从仓库根连跑两次」时才暴露，人工很少这么跑，所以潜伏到现在。CI 用 Python 3.13（对齐 `backend/Dockerfile` 的 `python:3.13-slim`）与 Node 22（`vitest@5.1.0` 要求 `^22.12.0`）。依赖用 `npm ci` 不用 `npm install`：后者会顺手改锁文件，把锁文件漂移这个信号吞掉。
+
 ## 已知取舍
 
 1. 知识检索默认走关键词通道。BGE-M3 与 Chroma 的代码保留在 `app/integrations/chroma_client.py`，需要安装 torch 与 chromadb 并下载模型权重后把 `EMBEDDING_BACKEND` 切到 bge。两套索引独立，不混用向量。

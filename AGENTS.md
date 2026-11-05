@@ -124,6 +124,8 @@
 
 前端改动要跑 `npm test`、`npm run type-check`、`npm run build` 三条。`src/api/client.ts` 与 `src/stores/` 下的改动必须带 `.spec.ts`：这两处坏的 symptom 是跨页面的，靠手点验不完。
 
+`.github/workflows/ci.yml` 在 push 与 PR 上跑同一组命令。推送后确认 CI 绿了再继续下一个改动，红着连推等于把信号埋掉。
+
 ## 9. 会话隔离
 
 - 分析会话：只拆需求、列影响面，不产出代码。
