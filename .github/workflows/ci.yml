@@ -43,3 +43,5 @@ jobs:
       - run: npm test
       - run: npm run type-check
       - run: npm run build
+      # 体积也进 CI：删掉 echarts 那次是手工发现的，不写守卫下次还会引回来
+      - run: npm run size

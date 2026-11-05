@@ -1,0 +1,7 @@
+{
+  "_comment": "gzip 后的 kB 上限。改这里等于改标准，提交信息里要写清为什么。实测基线见 npm run size -- --report",
+  "firstLoad": 58,
+  "totalJs": 100,
+  "totalCss": 8,
+  "singleChunk": 60
+}
