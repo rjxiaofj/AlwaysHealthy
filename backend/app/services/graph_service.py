@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -120,27 +121,43 @@ class GraphService:
         config = self._config(ctx.conversation.thread_id)
         interrupted: dict[str, Any] | None = None
         reply = ""
+        budget = self.settings.workflow_timeout_seconds
         try:
-            async for chunk in self.graph.astream(graph_input, config=config, stream_mode="updates"):
-                for node, update in chunk.items():
-                    if node == "__interrupt__":
-                        payload = update[0].value if isinstance(update, (list, tuple)) else getattr(update, "value", {})
-                        interrupted = payload if isinstance(payload, dict) else {"raw": str(payload)}
-                        continue
-                    if node.startswith("__"):
-                        continue
-                    await self._persist_node(ctx, node, update or {})
-                    if isinstance(update, dict) and update.get("reply"):
-                        reply = update["reply"]
-                    yield (
-                        "node_progress",
-                        {
-                            "run_id": str(ctx.run_id),
-                            "node": node,
-                            "status": "completed",
-                            "message": NODE_LABELS.get(node, node),
-                        },
-                    )
+            # 单个节点卡住（模型不返回、检索挂起）时 astream 会一直等。空闲与总时长
+            # 两道闸在前端，但前端断连不会让这里停下，run 会一直挂在 running
+            async with asyncio.timeout(budget):
+                async for chunk in self.graph.astream(graph_input, config=config, stream_mode="updates"):
+                    for node, update in chunk.items():
+                        if node == "__interrupt__":
+                            payload = update[0].value if isinstance(update, (list, tuple)) else getattr(update, "value", {})
+                            interrupted = payload if isinstance(payload, dict) else {"raw": str(payload)}
+                            continue
+                        if node.startswith("__"):
+                            continue
+                        await self._persist_node(ctx, node, update or {})
+                        if isinstance(update, dict) and update.get("reply"):
+                            reply = update["reply"]
+                        yield (
+                            "node_progress",
+                            {
+                                "run_id": str(ctx.run_id),
+                                "node": node,
+                                "status": "completed",
+                                "message": NODE_LABELS.get(node, node),
+                            },
+                        )
+        except TimeoutError:
+            log.warning("graph run timeout run_id=%s budget=%ss", ctx.run_id, budget)
+            await self._fail(ctx, f"超时 {budget:.0f} 秒未完成", code="WORKFLOW_TIMEOUT")
+            yield (
+                "run_error",
+                {
+                    "run_id": str(ctx.run_id),
+                    "code": "WORKFLOW_TIMEOUT",
+                    "message": "这次分析没有在预期时间内完成，请稍后重试或把问题拆小一点",
+                },
+            )
+            return
         except Exception as exc:
             log.exception("graph run failed run_id=%s", ctx.run_id)
             await self._fail(ctx, str(exc))
@@ -374,12 +391,12 @@ class GraphService:
                 )
             await session.commit()
 
-    async def _fail(self, ctx: RunContext, message: str) -> None:
+    async def _fail(self, ctx: RunContext, message: str, code: str = "GRAPH_EXECUTION_ERROR") -> None:
         async with SessionLocal() as session:
             run = await session.get(WorkflowRun, ctx.run_id)
             if run:
                 run.status = "failed"
-                run.error_code = "GRAPH_EXECUTION_ERROR"
+                run.error_code = code
                 run.completed_at = datetime.now(UTC)
                 run.meta = {**(run.meta or {}), "error": message[:200]}
             await session.commit()

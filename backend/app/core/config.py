@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = "deepseek-chat"
     llm_timeout_seconds: float = 45.0
+    # 一次工作流的总预算。前端另有 180 秒兜底，这条必须更短：先由后端自己收口，
+    # 才能把 run 标成 failed；反过来是前端先断连、后端还在算，状态停在 running
+    workflow_timeout_seconds: float = 150.0
 
     # keyword 走本地关键词检索，bge 走 BGE-M3 + Chroma
     embedding_backend: str = "keyword"
