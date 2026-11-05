@@ -355,6 +355,26 @@
 
 第一次实现时阈值永远触发不了：本次失败的审计还没提交，统计差一条。现在统计前先 `flush`。`security_incidents` 从空壳变成有采集、有查询、有权限边界，且没有把越权 404 这种噪声拉进来。`pytest` 153 项通过。
 
+## 2026-11-05 前端测试骨架
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| FT-01 | 已登录请求 `/conversations` | 头带 `Bearer a1`，返回 envelope 的 `data` | 符合 | 无 |
+| FT-02 | 带令牌请求遇 401 | 刷新一次并重放原请求，共 3 次 fetch | 符合，令牌更新为 new，`/profiles/me` 出现两次 | 无 |
+| FT-03 | 401 且刷新接口也 401 | 清空令牌并抛原请求错误，不重放 | 符合，2 次 fetch | 无 |
+| FT-04 | 刷新成功但重放后再 401 | 不再刷新，直接抛错 | 符合，3 次 fetch 终止 | 无 |
+| FT-05 | `retry: false` 遇 401 | 不尝试刷新 | 符合，1 次 fetch | 无 |
+| FT-06 | 409 `RESOURCE_CONFLICT` | 错误码、状态、消息、detail 原样带出 | 符合 | 无 |
+| FT-07 | 502 且响应体不是 JSON | 兜底 `INTERNAL_ERROR` 与「请求失败 502」 | 符合 | 无 |
+| FT-08 | 两个页面同时调 `store.load()` | 只发一次请求，两者都拿到同一批数据 | 符合，`list` 调用 1 次，`loading` 期间为 true | 无 |
+| FT-09 | 连续两次 `load()` | 第二次重新请求，不被 inflight 卡死 | 符合，2 次 | 无 |
+| FT-10 | `load()` 失败后再调 | loading 归位，重试成功 | 符合，loading 为 false 后二次加载拿到 1 条 | 无 |
+| FT-11 | 三条提醒两条未读，标已读其中一条 | 未读数 2 变 1，列表行 `read_at` 就地更新 | 符合 | 无 |
+| FT-12 | 标已读接口报错 | 本地状态不动，异常向上抛 | 符合，未读数仍 2 | 无 |
+| FT-13 | 标不存在的 id | 不报错，未读数不变 | 符合 | 无 |
+
+前端此前只有类型检查与构建两道静态关。`client.ts` 是全站唯一出口，`reminders` 的 `inflight` 合并只写在注释里，两条约束都没有测试守着。初版 spec 用 `tokens.save({...} as never)` 绕过缺字段，等于把「调用方少传字段」这个真实风险静默掉，改成完整 `TokenPayload` 工厂。`reminders` 的 `inflight` 是模块级变量，用例之间会残留，每个用例前 `vi.resetModules()` 重新 import。`npm test` 13 项通过，`vue-tsc` 与 `vite build` 均无变化。
+
 ## 已知取舍
 
 1. 知识检索默认走关键词通道。BGE-M3 与 Chroma 的代码保留在 `app/integrations/chroma_client.py`，需要安装 torch 与 chromadb 并下载模型权重后把 `EMBEDDING_BACKEND` 切到 bge。两套索引独立，不混用向量。
@@ -375,3 +395,4 @@
 7. `~/.docker/daemon.json` 里加的 `registry-mirrors` 已被 Docker Desktop 覆盖回默认，现在文件里只剩 `builder` 与 `experimental`，`docker info` 没有 Mirrors 项。镜像是本地构建，拉取不受影响，换机部署前要在 Docker Desktop 设置里重新加。
 8. 资料解析的规则按常见检验单写法覆盖，手头没有真实报告样本。真实排版的字段名变体、跨页表格、竖排文字都还没验过，拿到样本后要补规则与用例。
 9. 容器实库上跑 `alembic check` 会报 LangGraph checkpointer 的四张表（`checkpoints`、`checkpoint_writes`、`checkpoint_blobs`、`checkpoint_migrations`）是「待删除」，因为这几张表由 checkpointer 自己建、不在模型里。这是噪音，不是漏迁移。空库上跑 check 才是可比对的信号。
+10. 前端测试只覆盖 `api/client.ts` 与 `stores/reminders.ts`，组件层没有测试，也没配覆盖率阈值。这两处坏的 symptom 跨页面，收益最高；组件最依赖真实接口形状，单测收益低于接口契约测试，留到接口稳定后再补。

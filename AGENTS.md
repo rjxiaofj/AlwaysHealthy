@@ -122,6 +122,8 @@
 
 每条验证在 `MEMORY.md` 记一行：输入、期望、实际、失败日志位置。失败不记“已修复”，只记现象与根因。
 
+前端改动要跑 `npm test`、`npm run type-check`、`npm run build` 三条。`src/api/client.ts` 与 `src/stores/` 下的改动必须带 `.spec.ts`：这两处坏的 symptom 是跨页面的，靠手点验不完。
+
 ## 9. 会话隔离
 
 - 分析会话：只拆需求、列影响面，不产出代码。
