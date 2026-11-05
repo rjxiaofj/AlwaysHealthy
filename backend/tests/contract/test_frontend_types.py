@@ -12,9 +12,14 @@ pydantic 默认的 `extra='ignore'` 把它静默丢掉，于是前端 `Profile` 
 静态比不了，放在 `NO_MODEL` 里写明原因，另有几条在下面对真实响应取一次键来对。
 """
 
+from datetime import date, datetime, time
+from decimal import Decimal
+from enum import Enum
 from pathlib import Path
 import re
-from typing import Any, get_args
+from types import UnionType
+from typing import Annotated, Any, Literal, Union, get_args, get_origin
+from uuid import UUID
 
 import pytest
 from pydantic import BaseModel
@@ -120,6 +125,10 @@ MAPPED: dict[str, type[BaseModel]] = {
     "TrackingSummary": SummaryOut,
 }
 
+# 这几个是请求体：值是前端发出去的，类型比对的方向要反过来（见 test_frontend_type_width_matches_model）
+REQUEST_INTERFACES = {"ProfilePatchBody"}
+
+
 NO_MODEL: dict[str, str] = {
     "AssessmentSummary": "assessment_service.list_latest 拼 dict，运行时见 test_assessment_summary_keys",
     "PlanSummary": "plan_service.list_plans 拼 dict，运行时见 test_plan_summary_keys",
@@ -206,8 +215,159 @@ def test_frontend_allows_null_when_model_can(interface: str):
     )
 
 
-# ---------------------------------------------------------------- 运行时：dict 响应
+# ---------------------------------------------------------------- 静态：类型宽度
 
+# 比的是「JS 运行时拿到的是哪种值」，不是完整类型。TS 泛型、字面量联合、条件类型
+# 这些真要比就得引 TypeScript 编译器，代价远大于收益
+_JS_KINDS = {"string", "number", "boolean", "array", "object", "null"}
+_WILDCARD = "any"
+
+
+def _literal_kind(value: object) -> str:
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, (int, float)):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    return _WILDCARD
+
+
+def _annotation_kinds(annotation: object) -> set[str]:
+    """pydantic 注解 → 序列化后 JS 那边的类型集合。看不懂的返回 wildcard，不误报。"""
+    if annotation is Any or annotation is None:
+        return {_WILDCARD}
+    if annotation is type(None):
+        return {"null"}
+
+    origin = get_origin(annotation)
+    args = get_args(annotation)
+
+    if origin is Annotated:
+        return _annotation_kinds(args[0])
+    if origin in (Union, UnionType):
+        kinds: set[str] = set()
+        for item in args:
+            kinds |= _annotation_kinds(item)
+        return kinds
+    if origin is Literal:
+        return {_literal_kind(item) for item in args}
+    if origin in (list, set, frozenset, tuple):
+        return {"array"}
+    if origin is dict:
+        return {"object"}
+
+    if isinstance(annotation, type):
+        # bool 是 int 的子类，顺序不能反
+        if issubclass(annotation, bool):
+            return {"boolean"}
+        if issubclass(annotation, (int, float, Decimal)):
+            return {"number"}
+        # datetime / UUID / date 序列化后都是字符串
+        if issubclass(annotation, (str, UUID, datetime, date, time)):
+            return {"string"}
+        if issubclass(annotation, Enum):
+            return {"number"} if issubclass(annotation, int) else {"string"}
+        if issubclass(annotation, BaseModel):
+            return {"object"}
+
+    return {_WILDCARD}
+
+
+def _ts_kinds(type_text: str) -> set[str]:
+    """前端类型文本 → 它能装下的 JS 类型集合。"""
+    text = type_text.strip()
+    if text.startswith("Record<") or text.startswith("{"):
+        # 结构化声明里的 | 属于内层，先认整体
+        return {"object"}
+
+    kinds: set[str] = set()
+    for raw in text.split("|"):
+        member = raw.strip().strip("()").strip()
+        lowered = member.lower()
+        if lowered in ("null", "undefined"):
+            kinds.add("null")
+        elif lowered in (_WILDCARD, "unknown"):
+            kinds.add(_WILDCARD)
+        elif lowered in ("string", "number", "boolean"):
+            kinds.add(lowered)
+        elif member.endswith("[]") or member.startswith("Array<"):
+            kinds.add("array")
+        elif member.startswith("'") or member.startswith('"'):
+            kinds.add("string")
+        elif re.fullmatch(r"[A-Za-z_][\w.]*", member):
+            # 命名的接口：types.ts 里这些名字都是 interface，序列化出来是对象
+            kinds.add("object")
+        else:
+            kinds.add(_WILDCARD)
+    return kinds
+
+
+@pytest.mark.parametrize("interface", sorted(MAPPED))
+def test_frontend_type_width_matches_model(interface: str):
+    """前端声明的类型必须装得下后端真正给的值。
+
+    只查「后端给的 JS 类型 ⊆ 前端声明」，前端写得比后端宽不算错——`string | null`
+    装在永远有值的字段上是保守，不是缺陷。反过来的错才是运行时崩：后端给字符串、
+    前端声明 number，模板里 `.toFixed()` 直接炸，而 tsc 与 pytest 都不会响。
+
+    `ProfilePatchBody` 这种请求体方向相反：值是前端发出去的，要验的是「前端可能发
+    的类型，后端接得住」。后端宽松（`dict | None`）而前端只发对象，那是正常的。
+    """
+    model = MAPPED[interface]
+    declared = INTERFACES.get(interface) or {}
+    violations: list[str] = []
+
+    for name, (type_text, _optional) in declared.items():
+        field = model.model_fields.get(name)
+        if field is None:
+            continue
+        backend = _annotation_kinds(field.annotation)
+        frontend = _ts_kinds(type_text)
+        if _WILDCARD in backend or _WILDCARD in frontend:
+            continue
+
+        if interface in REQUEST_INTERFACES:
+            problem = sorted(frontend - backend)
+            if problem:
+                violations.append(f"{name}: 前端可能发 {sorted(frontend)}，后端只接 {sorted(backend)}")
+        else:
+            problem = sorted(backend - frontend)
+            if problem:
+                violations.append(f"{name}: 后端 {sorted(backend)}，前端写的是 {type_text!r}")
+
+    assert not violations, (
+        f"{interface} 里这些字段前后端的类型对不上：{violations}。"
+        "tsc 只信声明，运行时不会替你转换"
+    )
+
+
+def test_annotation_kinds_mapping_is_what_the_frontend_sees():
+    """把「注解 → JS 类型」这张表钉住。改了映射就等于改了守卫的判断标准。"""
+    assert _annotation_kinds(int) == {"number"}
+    assert _annotation_kinds(bool) == {"boolean"}
+    assert _annotation_kinds(UUID) == {"string"}
+    assert _annotation_kinds(datetime) == {"string"}
+    assert _annotation_kinds(date) == {"string"}
+    assert _annotation_kinds(Decimal) == {"number"}
+    assert _annotation_kinds(list[int]) == {"array"}
+    assert _annotation_kinds(dict[str, Any]) == {"object"}
+    assert _annotation_kinds(Literal["male", "female"]) == {"string"}
+    assert _annotation_kinds(Literal[1, 2]) == {"number"}
+    assert _annotation_kinds(str | None) == {"string", "null"}
+    assert _annotation_kinds(Annotated[int, "约束"]) == {"number"}
+
+
+def test_ts_kinds_parsing_handles_the_shapes_types_file_uses():
+    assert _ts_kinds("string") == {"string"}
+    assert _ts_kinds("string | null") == {"string", "null"}
+    assert _ts_kinds("MetricPoint[]") == {"array"}
+    assert _ts_kinds("Record<string, number | string>") == {"object"}
+    assert _ts_kinds("MedicalHistory") == {"object"}
+    assert _ts_kinds("unknown") == {_WILDCARD}
+
+
+# ---------------------------------------------------------------- 运行时：dict 响应
 
 def _missing(actual: dict, interface: str) -> list[str]:
     return sorted(set(INTERFACES[interface]) - set(actual))
