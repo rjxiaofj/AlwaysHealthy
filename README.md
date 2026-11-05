@@ -63,12 +63,48 @@ python smoke_check.py              # 端到端冒烟，打印每一步的状态
 
 ## 部署
 
-```bash
-cd deployment
-docker compose up -d
+先装 Docker Desktop。安装包放在 `E:\Docker\installer`，程序目录与镜像数据都放 E 盘：
+
+```powershell
+cd deployment\scripts
+.\fetch-installer.ps1              # 下载安装包，中断后重跑会续传
+
+# 管理员 PowerShell
+.\install-docker.ps1
 ```
 
-compose 里 postgres、redis、backend 常开，chroma 在 `vector` profile 下按需拉起。
+脚本调用安装器时带 `--installation-dir=E:\Docker\Docker` 和 `--wsl-default-data-root=E:\Docker\data`，所以镜像、数据卷、WSL 磁盘都不占 C 盘。没装 WSL2 时脚本会先装并发提示，重启后再跑一次。
+
+安装结束不会立刻有 `ext4.vhdx`，那个文件要等 Docker Desktop 第一次启动、初始化 WSL 发行版时才建出来。安装完当前终端也认不到 `docker` 命令，PATH 要新开终端才刷新，所以下面用脚本起服务，不要手工敲 `docker compose`。
+
+```powershell
+cd deployment\scripts
+.\pull-base-images.ps1   # 拉不到基础镜像时先跑这条，走镜像站
+.\start.ps1              # 引擎没起会自动拉起 Docker Desktop，首次要构建镜像
+.\start.ps1 -Vector      # 需要 bge 检索时带上 chroma
+.\start.ps1 -Down        # 停止
+```
+
+`start.ps1` 先按 PATH 找 `docker`，找不到就去 `-InstallDir` 指定的安装目录取 `resources\bin\docker.exe`。引擎没就绪时它会启动 Docker Desktop 并最多等五分钟，首次启动要初始化 WSL 会慢一些。
+
+`auth.docker.io` 在部分网络下连不上，构建会停在拉基础镜像那一步。`pull-base-images.ps1` 从镜像站取回四个基础镜像再打回原始标签，构建就只走本地。
+
+第一次运行会把 `.env.example` 复制成 `.env` 并中断，填好 `JWT_SECRET` 再跑。后端在 `http://127.0.0.1:8080`，接口文档在 `/api/docs`。
+
+compose 里 postgres、redis、backend 常开，chroma 在 `vector` profile 下按需拉起。容器只绑 127.0.0.1，日志按 10MB 三份轮转。
+
+数据分两处：
+
+| 内容 | 位置 | 说明 |
+| --- | --- | --- |
+| 数据库与向量索引 | 命名卷，随 WSL 数据盘 | 安装脚本已把 WSL 数据盘指到 `E:\Docker\data` |
+| 上传件与导出报告 | `deployment/.env` 的 `STORAGE_DIR` | 默认 `../storage`，可直接改成 E 盘绝对路径 |
+
+备份脚本 `scripts\backup.ps1` 默认写到仓库下 `backup_data`，换盘加参数：
+
+```powershell
+.\backup.ps1 -Target E:\Docker\backup
+```
 
 ## 工程约束
 

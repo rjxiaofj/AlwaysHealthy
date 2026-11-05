@@ -1,11 +1,15 @@
+name: alwayshealthy
+
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: alwayshealthy
-      POSTGRES_PASSWORD: alwayshealthy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alwayshealthy}
       POSTGRES_DB: alwayshealthy
     volumes:
+      # 命名卷落在 WSL 数据盘，安装脚本把该盘放在 E 盘，Postgres 不跨盘写 NTFS
       - pgdata:/var/lib/postgresql/data
     ports:
       - "127.0.0.1:5432:5432"
@@ -14,36 +18,47 @@ services:
       interval: 5s
       timeout: 3s
       retries: 12
+    logging: &default-logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     command: ["redis-server", "--save", "", "--appendonly", "no"]
-    ports:
-      - "127.0.0.1:6379:6379"
+    # 只给 compose 网络内的后端用，不映射宿主端口。本机装过原生 redis 会占住 6379
+    expose:
+      - "6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 12
+    logging: *default-logging
 
   # 只有切换到 EMBEDDING_BACKEND=bge 时才需要，默认演示走本地关键词检索
   chroma:
     image: chromadb/chroma:0.5.23
     profiles: ["vector"]
+    restart: unless-stopped
     volumes:
       - chromadata:/chroma/chroma
     ports:
       - "127.0.0.1:8001:8000"
+    logging: *default-logging
 
   backend:
     build:
       context: ..
       dockerfile: backend/Dockerfile
+    restart: unless-stopped
     environment:
       ENV: prod
-      DATABASE_URL: postgresql+asyncpg://alwayshealthy:alwayshealthy@postgres:5432/alwayshealthy
+      DATABASE_URL: postgresql+asyncpg://alwayshealthy:${POSTGRES_PASSWORD:-alwayshealthy}@postgres:5432/alwayshealthy
       CHECKPOINTER: postgres
-      JWT_SECRET: ${JWT_SECRET:-replace-this-secret-before-demo}
+      JWT_SECRET: ${JWT_SECRET:?先复制 .env.example 为 .env 并设置 JWT_SECRET}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com/v1}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
@@ -53,7 +68,8 @@ services:
       EMERGENCY_PHONE: ${EMERGENCY_PHONE:-120}
     volumes:
       - ../knowledge:/srv/knowledge:ro
-      - ../storage:/srv/storage
+      # 上传件与导出报告落在宿主机，容器重建不丢
+      - ${STORAGE_DIR:-../storage}:/srv/storage
       - modelcache:/srv/model_cache
     depends_on:
       postgres:
@@ -62,6 +78,13 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/live', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    logging: *default-logging
 
 volumes:
   pgdata:

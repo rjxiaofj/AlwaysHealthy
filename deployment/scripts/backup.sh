@@ -16,7 +16,9 @@ fi
 docker compose -f "$ROOT/deployment/docker-compose.yml" exec -T postgres \
   pg_dump -U alwayshealthy -d alwayshealthy -Fc > "$WORK/alwayshealthy.dump"
 
-tar -czf "$WORK/files.tar.gz" -C "$ROOT" knowledge storage
+PATHS=(knowledge)
+[ -d "$ROOT/storage" ] && PATHS+=(storage)
+tar -czf "$WORK/files.tar.gz" -C "$ROOT" "${PATHS[@]}"
 
 cp -r "$ROOT/backend/app/tools/risk_engine/rules" "$WORK/rules"
 
