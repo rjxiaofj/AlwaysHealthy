@@ -90,4 +90,4 @@ async def reassessment(
     session: AsyncSession = Depends(db_session),
 ):
     await tracking_service.reassessment_request(session, user.id, payload.reason)
-    return ok(request, None, "已登记，重新评估请在新会话中发起")
+    return ok(request, None, "重新评估诉求已登记")

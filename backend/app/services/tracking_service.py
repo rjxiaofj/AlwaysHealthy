@@ -6,12 +6,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFound
+from app.core.logging import get_logger
 from app.core.timeutil import as_utc
 from app.db.models import HealthFeedbackRecord, HealthMetricRecord, PlanTask
+from app.repositories import chat as chat_repo
 from app.repositories import health as health_repo
 from app.repositories import plan as plan_repo
 from app.schemas.tracking import MetricIn, TrendOut, TrendPoint
 from app.tools.metrics import METRIC_DEFS
+
+log = get_logger(__name__)
 
 
 async def add_metric(session: AsyncSession, user_id: UUID, payload: MetricIn) -> HealthMetricRecord:
@@ -132,17 +136,19 @@ async def summary(session: AsyncSession, user_id: UUID, plan_id: UUID) -> dict[s
 
 
 async def reassessment_request(session: AsyncSession, user_id: UUID, reason: str) -> None:
-    # 重新评估只登记诉求，实际评估由用户在工作流中发起，避免后台自动创建记录
-    health_repo.audit(
+    # 重新评估只登记诉求，实际评估由用户主动发起，避免后台自动创建记录。
+    # 审计的 result 列只有 16 个字符，装不下原因，只记状态；原因本身没有后续分析价值
+    chat_repo.audit(
         session,
         actor_user_id=user_id,
         action="reassessment_request",
         resource_type="health_profile",
         resource_id=str(user_id),
-        result=reason[:120],
+        result="requested",
         request_id=None,
     )
     await session.commit()
+    log.info("reassessment requested user=%s reason=%s", user_id, reason[:60])
 
 
 async def today_tasks(session: AsyncSession, user_id: UUID) -> list[dict[str, Any]]:

@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
-import { planApi, trackingApi } from '@/api'
+import { assessmentApi, planApi, trackingApi } from '@/api'
 import type { Plan, PlanSummary, Task, TrackingSummary } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
 import { useToastStore } from '@/stores/toast'
 
 const toast = useToastStore()
+const router = useRouter()
 const plans = ref<PlanSummary[]>([])
 const selected = ref<Plan | null>(null)
 const summary = ref<TrackingSummary | null>(null)
@@ -23,6 +25,8 @@ const rescheduleTask = ref('')
 const rescheduleDate = ref('')
 const editTime = ref('')
 const editReminder = ref(true)
+const reassessReason = ref('')
+const reassessing = ref(false)
 
 const today = new Date().toISOString().slice(0, 10)
 
@@ -53,6 +57,22 @@ const canShift = computed(() => {
   // 后端按版本统计打卡记录，前端只能按当前版本任务的打卡状态粗判，最终拦截以接口为准
   if (plan.start_date < today) return false
   return !plan.tasks.some((task) => ['completed', 'partial', 'skipped'].includes(task.checkin_status || ''))
+})
+
+const daysLeft = computed(() => {
+  const plan = selected.value
+  if (!plan) return 0
+  const end = new Date(`${plan.end_date}T00:00:00`).getTime()
+  const now = new Date(`${today}T00:00:00`).getTime()
+  return Math.round((end - now) / 86400000)
+})
+
+// 周期结束或只剩两天时给重新评估入口，平台不自动发起，也不自动生成下一周期计划
+const canReassess = computed(() => {
+  const plan = selected.value
+  if (!plan) return false
+  if (plan.status === 'completed') return true
+  return plan.status === 'active' && daysLeft.value <= 2
 })
 
 async function load(preferId?: string) {
@@ -140,6 +160,23 @@ async function shiftPlan() {
     toast.error(error instanceof Error ? error.message : '改期失败')
   } finally {
     busy.value = false
+  }
+}
+
+async function reassess() {
+  if (!selected.value) return
+  const reason = reassessReason.value.trim() || '计划周期结束，主动发起重新评估'
+  reassessing.value = true
+  try {
+    await trackingApi.reassessment(reason)
+    await assessmentApi.create()
+    reassessReason.value = ''
+    toast.success('新的评估已生成，可以按新结果生成下一周期计划')
+    router.push('/assessment')
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : '重新评估失败')
+  } finally {
+    reassessing.value = false
   }
 }
 
@@ -348,6 +385,26 @@ onMounted(() => load())
           </ul>
           <p class="mt-2 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
             完成率只反映执行情况，不代表身体指标改善或恶化
+          </p>
+        </div>
+
+        <div v-if="canReassess" class="glass card-pad">
+          <h2 class="text-[14px] font-semibold">周期收尾</h2>
+          <p class="mt-1 text-[12px]" :style="{ color: 'var(--color-text-secondary)' }">
+            {{ selected.status === 'completed' ? '这个周期已经结束。' : `距离周期结束还有 ${daysLeft} 天。` }}
+            平台不会自动帮你重新评估，也不会自动生成下一周期计划，是否继续由你决定。
+          </p>
+          <div class="mt-3 flex flex-wrap items-end gap-2">
+            <div class="min-w-[220px] flex-1">
+              <label class="label" for="reassess">重新评估的原因</label>
+              <input id="reassess" v-model="reassessReason" class="field" placeholder="例如：一个周期做完了，想看看指标有没有变化" />
+            </div>
+            <button class="btn btn-primary" :disabled="reassessing" @click="reassess">
+              {{ reassessing ? '评估中' : '基于当前档案重新评估' }}
+            </button>
+          </div>
+          <p class="mt-2 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+            会读取你现在的档案与指标生成新评估，历史评估、报告与这个周期的打卡记录都保留
           </p>
         </div>
 

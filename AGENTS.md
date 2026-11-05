@@ -60,7 +60,7 @@
 - 任务级提醒开关 `plan_tasks.reminder_enabled` 只在 `reminder_service.sync` 里判断，管的是当天任务待完成提醒。计划级提醒不受它影响。新建设置默认开启，复制版本时沿用原任务的值。
 - 设备读数只有 `quality_status=verified` 才允许进入评估快照，其余只进指标表，过滤点在 `app/repositories/health.py::latest_metrics`。
 - 体检资料的识别结果只进 `file_assets.parsed_payload`，用户确认后才写 `health_metric_records`。不做 OCR，解析不出来的保持 `unsupported`，不得用模型猜字段。
-- `security_audit_logs` 与 `consent_records` 只追加不覆盖。审计不得记录密码、令牌原文、完整档案。
+- `security_audit_logs` 与 `consent_records` 只追加不覆盖。审计不得记录密码、令牌原文、完整档案。`result` 列只有 16 个字符，只能写短状态词，自由文本写日志。
 - Redis 只做缓存与短期协调。禁止把档案、评估、计划版本、打卡记录只写 Redis。
 - 迁移全部走 Alembic，不手改演示库。
 
