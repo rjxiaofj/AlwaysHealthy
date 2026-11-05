@@ -84,6 +84,21 @@ async def main():
             r = await client.get("/api/v1/plans", headers=headers)
             print("plans", r.json()["data"])
 
+            active = next(item for item in r.json()["data"] if item["status"] == "active")
+            r = await client.post(
+                f"/api/v1/plans/{active['id']}/adjust", headers=headers, json={"reason": "烟测：任务有点多"}
+            )
+            adjust_version = r.json()["data"]["version_id"]
+            await client.post(
+                f"/api/v1/plans/{active['id']}/approve", headers=headers, json={"version_id": adjust_version}
+            )
+            r = await client.post(
+                f"/api/v1/plans/{active['id']}/adjustment-feedback",
+                headers=headers,
+                json={"version_id": adjust_version, "feedback": "差别不大"},
+            )
+            print("adjustment-feedback", r.status_code, r.json()["data"]["feedback"])
+
             r = await client.get("/api/v1/reports", headers=headers)
             print("reports", r.json()["data"])
 

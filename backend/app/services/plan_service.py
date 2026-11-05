@@ -129,7 +129,12 @@ async def approve(session: AsyncSession, user_id: UUID, plan_id: UUID, version_i
     return plan
 
 
-async def reject_version(session: AsyncSession, user_id: UUID, plan_id: UUID, version_id: UUID) -> None:
+async def reject_version(session: AsyncSession, user_id: UUID, plan_id: UUID, version_id: UUID) -> str:
+    """否掉一个草稿版本。两种来源不同处理：
+
+    初次计划的草稿被否，计划本身也不成立，直接取消；调整产生的草稿被否，
+    只作废这一版，计划继续用原来的生效版本，用户不会因为试了一次调整丢掉整个计划。
+    """
     plan = await repo.plan_of(session, user_id, plan_id)
     if plan is None:
         raise NotFound("计划不存在")
@@ -138,10 +143,25 @@ async def reject_version(session: AsyncSession, user_id: UUID, plan_id: UUID, ve
         raise NotFound("计划版本不存在")
     if version.status != "draft":
         raise Conflict("只有草稿版本可以拒绝")
+
+    pending_adjust = await session.scalar(
+        select(PlanAdjustmentRecord).where(
+            PlanAdjustmentRecord.plan_id == plan.id,
+            PlanAdjustmentRecord.new_version_id == version.id,
+            PlanAdjustmentRecord.approval_status == "pending",
+        )
+    )
     version.status = "cancelled"
+    if pending_adjust:
+        pending_adjust.approval_status = "rejected"
+        pending_adjust.confirmed_at = datetime.now(UTC)
+        await session.commit()
+        return "调整已作废，计划仍是原来的版本"
+
     if plan.status == "pending_review":
         plan.status = "cancelled"
     await session.commit()
+    return "计划已取消"
 
 
 async def adjust(session: AsyncSession, user_id: UUID, plan_id: UUID, reason: str) -> HealthPlanVersion:
@@ -413,6 +433,49 @@ async def close_expired(session: AsyncSession, user_id: UUID) -> None:
         await session.commit()
 
 
+async def _approved_adjustment(session: AsyncSession, plan: HealthPlan) -> PlanAdjustmentRecord | None:
+    """当前版本由调整产生且已生效时返回那条记录。改期也会换版本，但改期不写调整记录。"""
+    if plan.current_version_id is None:
+        return None
+    for record in await repo.adjustment_log(session, plan.id):
+        if record.new_version_id == plan.current_version_id and record.approval_status == "approved":
+            return record
+    return None
+
+
+async def submit_adjustment_feedback(
+    session: AsyncSession,
+    user_id: UUID,
+    plan_id: UUID,
+    version_id: UUID,
+    feedback: str,
+) -> dict[str, Any]:
+    """调整生效后收一句用户反馈。
+
+    只收当前版本，历史调整不再回头补，否则同一条记录会混进不同时期的判断。
+    同一条记录重复提交直接覆盖，不追加。
+    """
+    plan = await repo.plan_of(session, user_id, plan_id)
+    if plan is None:
+        raise NotFound("计划不存在")
+    if plan.current_version_id != version_id:
+        raise Conflict("只能对当前生效的版本反馈")
+
+    record = await _approved_adjustment(session, plan)
+    if record is None:
+        raise Conflict("这个版本不是调整产生的，没有可反馈的记录")
+
+    text = feedback.strip()
+    if len(text) < 2:
+        raise InvalidHealthData("反馈内容太短")
+    record.user_feedback = text[:200]
+    await session.commit()
+    return {
+        "version_id": record.new_version_id,
+        "feedback": record.user_feedback,
+    }
+
+
 async def detail(session: AsyncSession, user_id: UUID, plan_id: UUID) -> dict[str, Any]:
     await close_expired(session, user_id)
     plan = await repo.plan_of(session, user_id, plan_id)
@@ -423,6 +486,18 @@ async def detail(session: AsyncSession, user_id: UUID, plan_id: UUID) -> dict[st
     tasks = await repo.tasks_of(session, plan.current_version_id) if plan.current_version_id else []
     checkins = await repo.checkins_between(session, user_id, plan.start_date, plan.end_date)
     status_map = {item.task_id: item.status for item in checkins}
+    adjustment_record = await _approved_adjustment(session, plan)
+    adjustment = (
+        {
+            "version_id": adjustment_record.new_version_id,
+            "reason": adjustment_record.adjustment_reason,
+            "status": adjustment_record.approval_status,
+            "created_at": adjustment_record.created_at,
+            "feedback": adjustment_record.user_feedback,
+        }
+        if adjustment_record
+        else None
+    )
 
     return {
         "id": plan.id,
@@ -434,6 +509,7 @@ async def detail(session: AsyncSession, user_id: UUID, plan_id: UUID) -> dict[st
         "current_version_id": plan.current_version_id,
         "assessment_id": plan.assessment_id,
         "created_at": plan.created_at,
+        "adjustment": adjustment,
         "tasks": [
             {
                 "id": task.id,

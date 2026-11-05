@@ -17,6 +17,7 @@ const busy = ref(false)
 const duration = ref(14)
 const goal = ref('')
 const adjustReason = ref('')
+const adjustmentNote = ref('')
 const shiftStart = ref('')
 const shiftReason = ref('')
 const feedbackTask = ref('')
@@ -49,7 +50,14 @@ const activeVersion = computed(() => {
   return selected.value.versions.find((item) => item.id === selected.value?.current_version_id) || null
 })
 
-const canApprove = computed(() => selected.value?.status === 'pending_review' && activeVersion.value?.status === 'draft')
+// 调整产生的草稿不会动 current_version_id，只看它找不到待确认版本
+const pendingVersion = computed(() => selected.value?.versions.find((item) => item.status === 'draft') || null)
+
+const canApprove = computed(() => !!pendingVersion.value)
+
+const pendingIsAdjustment = computed(() => !!pendingVersion.value && selected.value?.status === 'active')
+
+const adjustment = computed(() => selected.value?.adjustment || null)
 
 // 打卡只允许 active 计划的当前版本任务，已结束或未生效的计划不该再露出打卡按钮
 const canCheckin = computed(() => selected.value?.status === 'active')
@@ -119,14 +127,49 @@ async function generate() {
 }
 
 async function approve() {
-  if (!selected.value || !selected.value.current_version_id) return
+  const version = pendingVersion.value
+  if (!selected.value || !version) return
   busy.value = true
   try {
-    selected.value = await planApi.approve(selected.value.id, selected.value.current_version_id)
-    toast.success('计划已生效')
+    selected.value = await planApi.approve(selected.value.id, version.id)
+    toast.success('新版本已生效')
     await load(selected.value.id)
   } catch (error) {
     toast.error(error instanceof Error ? error.message : '确认失败')
+  } finally {
+    busy.value = false
+  }
+}
+
+async function rejectPending() {
+  const version = pendingVersion.value
+  if (!selected.value || !version) return
+  busy.value = true
+  try {
+    const plan = await planApi.rejectVersion(selected.value.id, version.id)
+    toast.success(pendingIsAdjustment.value ? '这次调整已作废，计划保持原样' : '计划已取消')
+    await load(plan.id)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : '作废失败')
+  } finally {
+    busy.value = false
+  }
+}
+
+async function submitAdjustmentFeedback(verdict: string) {
+  const plan = selected.value
+  const record = adjustment.value
+  if (!plan || !record?.version_id) return
+  const note = adjustmentNote.value.trim()
+  const text = note ? `${verdict}：${note}` : verdict
+  busy.value = true
+  try {
+    await planApi.adjustmentFeedback(plan.id, record.version_id, text)
+    adjustmentNote.value = ''
+    toast.success('反馈已记下')
+    await load(plan.id)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : '提交失败')
   } finally {
     busy.value = false
   }
@@ -339,9 +382,21 @@ onMounted(() => load())
             </div>
             <div class="flex flex-wrap gap-2">
               <button v-if="canApprove" class="btn btn-primary" :disabled="busy" @click="approve">确认启用</button>
+              <button v-if="canApprove" class="btn btn-ghost" :disabled="busy" @click="rejectPending">
+                {{ pendingIsAdjustment ? '放弃这次调整' : '不接受这份计划' }}
+              </button>
               <button v-if="canCancel" class="btn btn-ghost" :disabled="busy" @click="cancelPlan">取消计划</button>
             </div>
           </div>
+
+          <p
+            v-if="pendingVersion"
+            class="mt-3 rounded-[14px] border px-3 py-2 text-[11px] leading-relaxed"
+            :style="{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }"
+          >
+            待确认 v{{ pendingVersion.version_no }}：{{ pendingVersion.change_reason || '首次生成的计划' }}。
+            确认后任务按这一版执行{{ pendingIsAdjustment ? '，放弃则继续用原来的版本' : '，不接受则计划取消' }}。
+          </p>
 
           <div v-if="canCancel" class="mt-4 flex flex-wrap items-end gap-2">
             <div class="min-w-[220px] flex-1">
@@ -364,6 +419,22 @@ onMounted(() => load())
             <p class="w-full text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
               只平移开始与结束日期，任务内容不变；计划一旦开始或已有打卡就不能整体改期
             </p>
+          </div>
+
+          <div v-if="adjustment" class="mt-4 rounded-[14px] border px-3 py-3" :style="{ borderColor: 'var(--color-border)' }">
+            <p class="text-[12px] font-medium">这次调整合适吗</p>
+            <p class="mt-1 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+              调整原因：{{ adjustment.reason || '当时没有填写' }}
+            </p>
+            <template v-if="!adjustment.feedback">
+              <div class="mt-2 flex flex-wrap gap-2">
+                <button class="btn btn-ghost" :disabled="busy" @click="submitAdjustmentFeedback('更合适了')">更合适了</button>
+                <button class="btn btn-ghost" :disabled="busy" @click="submitAdjustmentFeedback('差别不大')">差别不大</button>
+                <button class="btn btn-ghost" :disabled="busy" @click="submitAdjustmentFeedback('还是不合适')">还是不合适</button>
+              </div>
+              <input v-model="adjustmentNote" class="field mt-2" maxlength="60" placeholder="想补充一句就写在这里，可留空" />
+            </template>
+            <p v-else class="mt-2 text-[12px]">已记录：{{ adjustment.feedback }}</p>
           </div>
 
           <div class="mt-4">

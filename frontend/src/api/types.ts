@@ -139,6 +139,14 @@ export interface PlanVersion {
   content: Record<string, unknown>
 }
 
+export interface PlanAdjustment {
+  version_id: string | null
+  reason: string | null
+  status: string
+  created_at: string
+  feedback: string | null
+}
+
 export interface Plan {
   id: string
   title: string
@@ -149,6 +157,7 @@ export interface Plan {
   current_version_id: string | null
   assessment_id: string | null
   created_at: string
+  adjustment: PlanAdjustment | null
   tasks: Task[]
   versions: PlanVersion[]
 }

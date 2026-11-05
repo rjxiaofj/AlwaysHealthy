@@ -9,7 +9,15 @@ from app.api.deps import current_user, db_session
 from app.core.exceptions import Conflict, IllegalPlan
 from app.core.response import ok
 from app.db.models import User
-from app.schemas.plan import CheckinIn, PlanAdjustIn, PlanApproveIn, PlanGenerateIn, PlanShiftIn, TaskPatchIn
+from app.schemas.plan import (
+    AdjustmentFeedbackIn,
+    CheckinIn,
+    PlanAdjustIn,
+    PlanApproveIn,
+    PlanGenerateIn,
+    PlanShiftIn,
+    TaskPatchIn,
+)
 from app.services import assessment_service, plan_service, tracking_service
 from app.tools import plan_validator
 
@@ -75,6 +83,18 @@ async def approve_plan(
     return ok(request, await plan_service.detail(session, user.id, plan_id))
 
 
+@router.post("/plans/{plan_id}/versions/{version_id}/reject")
+async def reject_version(
+    plan_id: UUID,
+    version_id: UUID,
+    request: Request,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(db_session),
+):
+    message = await plan_service.reject_version(session, user.id, plan_id, version_id)
+    return ok(request, await plan_service.detail(session, user.id, plan_id), message)
+
+
 @router.post("/plans/{plan_id}/adjust")
 async def adjust_plan(
     plan_id: UUID,
@@ -97,6 +117,20 @@ async def shift_plan(
 ):
     await plan_service.shift(session, user.id, plan_id, payload.start_date, payload.reason or "")
     return ok(request, await plan_service.detail(session, user.id, plan_id))
+
+
+@router.post("/plans/{plan_id}/adjustment-feedback")
+async def adjustment_feedback(
+    plan_id: UUID,
+    payload: AdjustmentFeedbackIn,
+    request: Request,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(db_session),
+):
+    data = await plan_service.submit_adjustment_feedback(
+        session, user.id, plan_id, payload.version_id, payload.feedback
+    )
+    return ok(request, data)
 
 
 @router.post("/plans/{plan_id}/cancel")

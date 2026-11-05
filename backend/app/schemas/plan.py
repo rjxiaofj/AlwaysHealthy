@@ -37,6 +37,14 @@ class VersionOut(BaseModel):
     content: dict[str, Any] = {}
 
 
+class AdjustmentOut(BaseModel):
+    version_id: UUID | None
+    reason: str | None
+    status: str
+    created_at: datetime
+    feedback: str | None
+
+
 class PlanOut(BaseModel):
     id: UUID
     title: str
@@ -47,6 +55,7 @@ class PlanOut(BaseModel):
     current_version_id: UUID | None
     assessment_id: UUID | None
     created_at: datetime
+    adjustment: AdjustmentOut | None = None
     tasks: list[TaskOut] = []
     versions: list[VersionOut] = []
 
@@ -62,6 +71,11 @@ class PlanAdjustIn(BaseModel):
 class PlanShiftIn(BaseModel):
     start_date: date
     reason: str | None = Field(default=None, max_length=200)
+
+
+class AdjustmentFeedbackIn(BaseModel):
+    version_id: UUID
+    feedback: str = Field(min_length=2, max_length=200)
 
 
 class CheckinIn(BaseModel):
