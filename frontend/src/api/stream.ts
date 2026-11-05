@@ -3,7 +3,26 @@ import { splitSseFrames } from '@/utils/sse'
 
 const BASE = '/api/v1'
 
+/** 这么久没收到任何数据就认为连接死了。健康咨询最长一次跑过二十多秒。 */
+const IDLE_TIMEOUT_MS = 45_000
+
 export type StreamHandler = (event: string, data: Record<string, unknown>) => void
+
+class IdleTimeout extends Error {}
+
+async function readWithIdle(reader: ReadableStreamDefaultReader<Uint8Array>, timeoutMs: number) {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      reader.read(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new IdleTimeout()), timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
 
 async function readStream(response: Response, onEvent: StreamHandler) {
   if (!response.ok) {
@@ -26,9 +45,19 @@ async function readStream(response: Response, onEvent: StreamHandler) {
   let buffer = ''
 
   while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
+    let chunk: ReadableStreamReadResult<Uint8Array>
+    try {
+      chunk = await readWithIdle(reader, IDLE_TIMEOUT_MS)
+    } catch (error) {
+      // 服务端卡住时 fetch 不会自己结束，页面就一直转圈。这里主动断开并给个能看懂的原因
+      await reader.cancel().catch(() => undefined)
+      if (error instanceof IdleTimeout) {
+        throw new Error(`服务端超过 ${Math.round(IDLE_TIMEOUT_MS / 1000)} 秒没有返回数据，请稍后重试`)
+      }
+      throw error
+    }
+    if (chunk.done) break
+    buffer += decoder.decode(chunk.value, { stream: true })
 
     // 切帧的逻辑单独放在 utils/sse.ts：换行符归一化、半个事件留在缓冲区，
     // 这些用真实流才能验，放在这里就没法写单测了

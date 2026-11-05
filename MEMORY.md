@@ -557,7 +557,42 @@
 
 切帧逻辑抽到 `utils/sse.ts`（`splitSseFrames` / `parseSseFrame`），先 CRLF 归一化再切，最后一段不完整的留在 `rest`。`refreshSession()` 从 client 导出复用模块级 `refreshTask`，并发仍只刷一次。变异验证：去掉归一化 SS-03 红，短路 401 分支 SS-09 红。前端 89 → 103 项。端到端在浏览器里跑了一次真实对话（DeepSeek + 真实 SSE），回复完整。顺带给 `TrendsView` 两栏 grid 加 `items-start`，左栏图表卡片不再被右栏撑高。
 
+## 2026-11-05 导航高亮
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| NV-01 | 停在 `/trends` | 只有「趋势」亮 | 改动前首页永远亮着：`router-link-active` 是包含匹配，`/` 是所有路径的前缀 | frontend/src/utils/nav.ts |
+| NV-02 | 停在 `/` | 只有首页亮 | 同上，且首页与所在栏目同时亮两个 | 同上 |
+| NV-03 | 停在 `/plans/12` | 「计划」亮 | 符合（包含匹配本来对，但不能靠它） | 同上 |
+| NV-04 | 停在 `/plansomething` | 计划不亮 | 符合，按 `/` 边界比，不是纯 `startsWith` | 同上 |
+| NV-05 | 目标或当前路径带尾斜杠 | 判定不变 | 符合，两边都先裁尾斜杠 | 同上 |
+| NV-06 | `route.path` 为空 | 按 `/` 处理 | 符合 | 同上 |
+| NV-07 | 停在 `/login` | 一个都不亮 | 符合 | 同上 |
+
+不再用 vue-router 的两个内置类，`isNavActive(currentPath, target)` 自己比：根路径只能精确相等，其余按「相等或 `/` 前缀」判，两边先裁尾斜杠。样式从 `.nav-item.router-link-active` 换成 `.nav-item.is-active`，两处 `RouterLink`（桌面侧栏与移动底栏）都绑 `:class`。变异验证：`isNavActive` 改回 `startsWith`，NV-01 与 NV-04 同时红。前端 103 → 110 项。
+
+## 2026-11-05 流式超时与离开页面中止
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| ST-01 | 服务端连着不吐任何字节 | 45 秒后主动断开并说清原因 | 改动前 `reader.read()` 一直 pending，`fetch` 不会自己结束，页面永远转圈 | api/stream.ts::readWithIdle |
+| ST-02 | 每 30 秒来一个事件，累计 60 秒 | 不断，两个事件都收到 | 符合，计时按「距上次收到数据」重置，不是总时长 | 同上 |
+| AB-01 | `{name:'AbortError'}` | 认出来 | 符合 | utils/abort.ts |
+| AB-02 | 普通 `Error` | 不算取消 | 符合 | 同上 |
+| AB-03 | `null` / 字符串 | 不抛，返回 false | 符合 | 同上 |
+
+`ChatView` 里模块级 `controller` 加 `startStream()`：重发与切页都先 `abort()` 掉上一条，否则晚到的 token 会拼进新消息；`onBeforeUnmount` 置 `destroyed` 再 abort，`finally` 里 `refreshMessages()` 加 `if (!destroyed)` 守卫，不在已卸载组件上发请求；`catch` 用 `isAbortError` 过滤，用户自己取消不弹红色提示。`reader.cancel()` 在超时分支里调，别让连接挂着。变异验证：`IDLE_TIMEOUT_MS` 45s 改 90s，ST-01 挂（`Test timed out in 5000ms`），复原。前端 110 → 115 项。
+
+## 2026-11-05 前端可空性守卫
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| NC-01~24 | 每个映射接口，逐字段看模型注解里有没有 `None` | 有的必须在前端声明里允许 null | 一放开就抓到 `EvidenceSource` 的 `source_id`/`title`/`version`：规则引擎给的必填，LLM 拼进来的可能只有 `source_id`，模板里 `source.title` 拿到 null 直接 TypeError | tests/contract/test_frontend_types.py::test_frontend_allows_null_when_model_can |
+
+`_top_level_fields` 从「返回字段名集合」改成「返回 {字段名: (类型文本, 是否可选)}」，顺带把上一次的 CT 用例跟着改。`_allows_none` 用 `get_args` 查 `NoneType`，`Any` 与无注解不算。只做一个方向：模型可为 None → 前端必须允许；反过来前端写得宽松不拦，那是声明保守不是缺陷。`Record<`、`{`、`unknown`、`any` 这类结构性类型跳过。改完 `vue-tsc` 报 `AssessmentView` 的 `:key="source.source_id"` 不接受 null，改成 `source.source_id || index`。后端 207 → 231 项。
+
 ## 已知取舍
+
 
 1. 知识检索默认走关键词通道。BGE-M3 与 Chroma 的代码保留在 `app/integrations/chroma_client.py`，需要安装 torch 与 chromadb 并下载模型权重后把 `EMBEDDING_BACKEND` 切到 bge。两套索引独立，不混用向量。
 2. 体检资料只解析 PDF 文本层，不做 OCR。图片与扫描件记 `unsupported` 并保留原件，不用模型猜字段。识别结果需要用户逐项确认才写指标表。
@@ -580,6 +615,7 @@
 10. 前端测试覆盖 `api/client.ts`、`stores/reminders.ts`、`views/planLogic.ts`、`views/profileLogic.ts`、`utils/datetime.ts`、`utils/today.ts`、`utils/keyboard.ts`、`utils/redirect.ts`，组件本身仍然没有渲染测试，也没配覆盖率阈值。判定与请求体拼装这类分支已经抽成纯函数并覆盖；组件最依赖真实接口形状，单测收益低于接口契约测试，留到接口稳定后再补。接口形状这一层已由 `tests/contract/test_frontend_types.py` 承担。
 11. 业务日期固定在东八区（`BUSINESS_TZ`），非东八区用户看到的「今天」会是东八区的今天。急救电话默认 120、文案中文，这个假设与产品定位一致；真要支持其他时区得把偏移做成配置项。
 12. 会话过期是「事后发现」：刷新由请求驱动，用户空闲着令牌过期不会主动续，要等下一次请求拿到 401 才跳转。`LoginView` 的回跳只接受站内绝对路径，底层仍靠 `router.push()` 的兜底重定向，不是唯一防线。
-13. 前后端字段一致性只比字段名，不比类型与可选性。`string` 写成 `number`、后端可空而前端非空，这类抓不到；要比类型得引入 TypeScript 的 AST，代价大于收益。嵌套结构（`ReportDetail.content`、`Recommendation`）也没守卫，靠 `NO_MODEL` 里那几行说明提醒。
+13. 前后端字段一致性只比字段名与可空性（`NC-01`~`NC-24`），不比类型宽度与可选性。`string` 写成 `number`、`number` 写成 `string` 这类抓不到；要比宽度得引入 TypeScript 的 AST，代价大于收益。可空性只做单方向（后端可为 None → 前端必须写 `| null`），反向（前端写 `| null` 而后端永不为空）只是声明宽松，不会崩，不拦。嵌套结构（`ReportDetail.content`、`Recommendation`）也没守卫，靠 `NO_MODEL` 里那几行说明提醒。
 14. echarts 仍占 466 kB（gzip 157）。只做了按需加载让无数据时不下，没有换实现。真要压只能手写 SVG 折线（这条曲线只有一条线加虚线网格）或换更轻的库，前者收益最大但要重做交互。首屏体积这件事目前没有自动化度量，只有构建输出的数字。
-15. 流式请求只对 401 重放，其他错误（500、网络断）不重试：健康咨询是长耗时请求，自动重试有重复生成回复的风险。也没有超时——后端挂着不回时前端一直等，`ChatView` 也没传 `AbortSignal`。流结束时若最后一帧没有空行收尾会被丢掉，当前后端每条事件都带 `\n\n`，实际不触发。
+15. 流式请求只对 401 重放，其他错误（500、网络断）不重试：健康咨询是长耗时请求，自动重试有重复生成回复的风险。空闲超时定在 45 秒（`IDLE_TIMEOUT_MS`），是「多久没收到任何一个字节」而不是总时长，健康咨询最长一次跑过二十多秒，总时长封顶还没做——真要防无限流式输出得在网关或后端按 token 数掐。流结束时若最后一帧没有空行收尾仍会被丢掉，当前后端每条事件都带 `\n\n`，实际不触发。
+16. 离开聊天页会 abort 在跑的流，已收到的 token 保留在气泡里，不会补全成完整回复；后台也没有断点续流，回来只能重新发一次。`controller` 是模块级单例，同一时刻只允许一条流，重发会掐掉上一条——这是有意的，否则晚到的 token 会拼进新消息。

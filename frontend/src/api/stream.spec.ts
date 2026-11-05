@@ -56,6 +56,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
   setSessionExpiredHandler(null)
   localStorage.clear()
@@ -126,5 +127,61 @@ describe('流式请求', () => {
     fetchMock.mockResolvedValueOnce(errorResponse(502, ''))
 
     await expect(streamMessage('c1', '你好', () => undefined)).rejects.toThrow('请求失败 502')
+  })
+
+  it('服务端长时间不发数据时主动断开', async () => {
+    // 后端卡住时 fetch 自己不会结束，页面会一直转圈
+    vi.useFakeTimers()
+    tokens.save(tokenPayload('a1', 'r1'))
+    const cancel = vi.fn()
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { getReader: () => ({ read: () => new Promise(() => undefined), cancel: async () => cancel() }) },
+      text: async () => '',
+    })
+
+    const promise = streamMessage('c1', '你好', () => undefined)
+    const assertion = expect(promise).rejects.toThrow('服务端超过 45 秒没有返回数据，请稍后重试')
+    await vi.advanceTimersByTimeAsync(45_000)
+    await assertion
+
+    expect(cancel).toHaveBeenCalled()
+  })
+
+  it('中途收到数据会重新计时', async () => {
+    vi.useFakeTimers()
+    tokens.save(tokenPayload('a1', 'r1'))
+    let reads = 0
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => ({
+          read: () => {
+            reads += 1
+            // 前两次隔 30 秒各来一个事件，累计超过 45 秒但每次都重新计时，不该断
+            if (reads <= 2) {
+              return new Promise((resolve) =>
+                setTimeout(
+                  () => resolve({ done: false, value: new TextEncoder().encode(`event: token\ndata: {"content":"${reads}"}\n\n`) }),
+                  30_000,
+                ),
+              )
+            }
+            return Promise.resolve({ done: true, value: undefined })
+          },
+          cancel: async () => undefined,
+        }),
+      },
+      text: async () => '',
+    })
+    const events: Array<[string, Record<string, unknown>]> = []
+
+    const promise = streamMessage('c1', '你好', (event, data) => events.push([event, data]))
+    await vi.advanceTimersByTimeAsync(60_000)
+    await promise
+
+    expect(events.map((item) => item[1].content)).toEqual(['1', '2'])
   })
 })

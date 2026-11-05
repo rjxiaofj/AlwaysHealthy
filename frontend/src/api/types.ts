@@ -77,10 +77,11 @@ export interface RiskFactor {
   risk_level: string
 }
 
+// 这三个字段后端是可选字符串：规则引擎给的一定有，LLM 拼进来的可能只有 source_id
 export interface EvidenceSource {
-  source_id: string
-  title: string
-  version: string
+  source_id: string | null
+  title: string | null
+  version: string | null
   page: number | null
 }
 

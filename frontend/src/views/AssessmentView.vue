@@ -143,7 +143,7 @@ onMounted(load)
 
           <div v-if="item.evidence_sources.length" class="mt-3 border-t pt-2" :style="{ borderColor: 'var(--color-border)' }">
             <p class="text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">医学依据</p>
-            <p v-for="source in item.evidence_sources" :key="source.source_id" class="text-[12px]" :style="{ color: 'var(--color-text-secondary)' }">
+            <p v-for="(source, index) in item.evidence_sources" :key="source.source_id || index" class="text-[12px]" :style="{ color: 'var(--color-text-secondary)' }">
               {{ source.title }}<span v-if="source.version">（{{ source.version }}）</span>
               <span v-if="source.page" :style="{ color: 'var(--color-text-tertiary)' }"> 第 {{ source.page }} 页</span>
             </p>

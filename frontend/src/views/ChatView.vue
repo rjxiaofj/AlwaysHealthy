@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import { chatApi } from '@/api'
 import { streamMessage, streamResume } from '@/api/stream'
 import type { ChatMessage, ConfirmationPayload, Conversation } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
 import { useToastStore } from '@/stores/toast'
+import { isAbortError } from '@/utils/abort'
 import { shouldSubmitOnEnter } from '@/utils/keyboard'
 
 const toast = useToastStore()
@@ -23,6 +24,16 @@ const scroller = ref<HTMLDivElement | null>(null)
 
 const activeTitle = computed(() => conversations.value.find((item) => item.id === activeId.value)?.title || '新的健康对话')
 const canSend = computed(() => input.value.trim().length > 0 && !sending.value)
+
+// 一次只有一个流在跑。切页、重发都要把上一个掐掉，否则晚到的 token 会拼进新消息里
+let controller: AbortController | null = null
+let destroyed = false
+
+function startStream(): AbortSignal {
+  controller?.abort()
+  controller = new AbortController()
+  return controller.signal
+}
 
 async function scrollToBottom() {
   await nextTick()
@@ -93,14 +104,15 @@ async function send() {
   await scrollToBottom()
 
   try {
-    await streamMessage(activeId.value, content, handleEvent)
+    await streamMessage(activeId.value, content, handleEvent, startStream())
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : '发送失败')
+    // 主动取消（离开页面、又发了一条）不弹提示，那是用户自己的动作
+    if (!isAbortError(error)) toast.error(error instanceof Error ? error.message : '发送失败')
   } finally {
     sending.value = false
     progress.value = ''
     streamingText.value = ''
-    await refreshMessages()
+    if (!destroyed) await refreshMessages()
   }
 }
 
@@ -132,15 +144,16 @@ async function resume(decision: 'approve' | 'modify' | 'reject') {
         feedback: decision === 'modify' ? feedback.value : null,
       },
       handleEvent,
+      startStream(),
     )
     if (decision === 'approve' || decision === 'reject') confirmation.value = null
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : '确认失败')
+    if (!isAbortError(error)) toast.error(error instanceof Error ? error.message : '确认失败')
   } finally {
     sending.value = false
     progress.value = ''
     streamingText.value = ''
-    await refreshMessages()
+    if (!destroyed) await refreshMessages()
   }
 }
 
@@ -173,6 +186,12 @@ function summaryLines(): string[] {
 onMounted(async () => {
   await loadConversations()
   if (!conversations.value.length) await newConversation()
+})
+
+onBeforeUnmount(() => {
+  // 离开页面时把还开着的流掐掉，不然它会在后台读完再往已卸载的组件里塞数据
+  destroyed = true
+  controller?.abort()
 })
 </script>
 

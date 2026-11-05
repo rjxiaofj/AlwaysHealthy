@@ -14,6 +14,7 @@ pydantic 默认的 `extra='ignore'` 把它静默丢掉，于是前端 `Profile` 
 
 from pathlib import Path
 import re
+from typing import Any, get_args
 
 import pytest
 from pydantic import BaseModel
@@ -57,28 +58,28 @@ def _block_body(text: str, open_index: int) -> str:
     raise AssertionError("types.ts 的大括号没配平，解析器要跟着改")
 
 
-def _top_level_fields(body: str) -> set[str]:
-    """只取最外层的 `key:` / `key?:`。
+def _top_level_fields(body: str) -> dict[str, tuple[str, bool]]:
+    """只取最外层的 `key:` / `key?:`，返回 {字段名: (类型文本, 是否可选)}。
 
     嵌套对象（`ReportDetail.content`）里的键属于后端自己拼的 dict，不在这里比，
     靠 `depth` 跳过——一行进入嵌套后 depth 就不为 0，直到对应的大括号关上。
     """
-    fields: set[str] = set()
+    fields: dict[str, tuple[str, bool]] = {}
     depth = 0
     for raw in body.splitlines():
         line = raw.strip()
         if depth == 0:
-            match = re.match(r"([A-Za-z_]\w*)\??\s*:", line)
+            match = re.match(r"([A-Za-z_]\w*)(\??)\s*:\s*(.*)$", line)
             if match:
-                fields.add(match.group(1))
+                fields[match.group(1)] = (match.group(3).strip(), bool(match.group(2)))
         depth += line.count("{") - line.count("}")
     return fields
 
 
-def _parse_types_file() -> tuple[dict[str, set[str]], set[str]]:
+def _parse_types_file() -> tuple[dict[str, dict[str, tuple[str, bool]]], set[str]]:
     """返回 (接口字段表, 泛型接口名集合)。"""
     text = _strip_comments(TYPES_FILE.read_text(encoding="utf-8"))
-    interfaces: dict[str, set[str]] = {}
+    interfaces: dict[str, dict[str, tuple[str, bool]]] = {}
     generics: set[str] = set()
     for match in re.finditer(r"export interface\s+([A-Za-z_]\w*)\s*(<[^>]*>)?\s*\{", text):
         name = match.group(1)
@@ -149,7 +150,7 @@ def test_frontend_fields_exist_in_model(interface: str):
     declared = INTERFACES.get(interface)
     assert declared is not None, f"types.ts 里已经没有 {interface}，映射表要跟着删"
 
-    missing = sorted(declared - set(model.model_fields))
+    missing = sorted(set(declared) - set(model.model_fields))
     assert not missing, (
         f"{interface} 声明了 {missing}，但 {model.__name__} 没有这些字段。"
         "前端拿到的会是 undefined，tsc 与 pytest 都不会报错"
@@ -165,11 +166,51 @@ def test_every_interface_is_accounted_for():
     assert not stale, f"{stale} 已经从 types.ts 删掉了，这张表要跟着清"
 
 
+def _allows_none(annotation) -> bool:
+    """模型字段的注解里有没有 None。`Any` 和没写注解的都不算。"""
+    if annotation is Any or annotation is None:
+        return False
+    if annotation is type(None):
+        return True
+    return any(getattr(item, "__name__", "") == "NoneType" for item in get_args(annotation))
+
+
+# 前端写的是结构性类型，以下这些跟「能不能是 null」无关，跳过
+_SKIP_TS_TYPES = ("Record<", "{", "unknown", "any", "Any")
+
+
+@pytest.mark.parametrize("interface", sorted(MAPPED))
+def test_frontend_allows_null_when_model_can(interface: str):
+    """模型可能是 None 的字段，前端必须写 `| null`。
+
+    反过来的错（前端写了 `| null`、模型永远不给 null）只是声明松一点，不会崩；
+    这个方向才会崩——模板里写 `item.title.length`，拿到 null 就是运行时错误。
+    """
+    model = MAPPED[interface]
+    declared = INTERFACES.get(interface) or {}
+    violations: list[str] = []
+
+    for name, (type_text, optional) in declared.items():
+        field = model.model_fields.get(name)
+        if field is None or not _allows_none(field.annotation):
+            continue
+        if optional or "null" in type_text:
+            continue
+        if any(token in type_text for token in _SKIP_TS_TYPES):
+            continue
+        violations.append(f"{name}: {type_text}")
+
+    assert not violations, (
+        f"{interface} 里这些字段后端可能是 null，但前端声明不允许：{violations}。"
+        "补上 `| null`，否则模板里直接读属性会抛 TypeError"
+    )
+
+
 # ---------------------------------------------------------------- 运行时：dict 响应
 
 
 def _missing(actual: dict, interface: str) -> list[str]:
-    return sorted(INTERFACES[interface] - set(actual))
+    return sorted(set(INTERFACES[interface]) - set(actual))
 
 
 @pytest.mark.asyncio
