@@ -53,6 +53,16 @@ async def add_feedback(
     return ok(request, {"id": str(record.id)})
 
 
+@router.get("/tracking/feedback")
+async def list_feedback(
+    request: Request,
+    days: int = Query(default=30, ge=1, le=365),
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(db_session),
+):
+    return ok(request, await tracking_service.list_feedback(session, user.id, days))
+
+
 @router.get("/tracking/summary")
 async def tracking_summary(
     request: Request,

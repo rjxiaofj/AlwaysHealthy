@@ -279,6 +279,16 @@ export interface ExtractedDocument {
   fields: ExtractedField[]
 }
 
+export interface FeedbackRecord {
+  id: string
+  recorded_at: string
+  mood_status: string | null
+  fatigue_level: string | null
+  physical_feeling: string | null
+  execution_difficulty: string | null
+  additional_feedback: string | null
+}
+
 export interface ConsentRecord {
   id: string
   consent_type: string

@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 
 import { trackingApi } from '@/api'
-import type { Trend } from '@/api/types'
+import type { FeedbackRecord, Trend } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
 import TrendChart from '@/components/TrendChart.vue'
 import { useToastStore } from '@/stores/toast'
@@ -41,6 +41,19 @@ const feedback = ref({
   execution_difficulty: '',
 })
 const feedbackBusy = ref(false)
+const feedbacks = ref<FeedbackRecord[]>([])
+
+const moodLabels: Record<string, string> = { good: '平稳', fair: '一般', low: '低落' }
+const fatigueLabels: Record<string, string> = { low: '轻', medium: '中', high: '重' }
+
+function feedbackSummary(item: FeedbackRecord) {
+  const parts = []
+  if (item.mood_status) parts.push(`情绪${moodLabels[item.mood_status] || item.mood_status}`)
+  if (item.fatigue_level) parts.push(`疲劳${fatigueLabels[item.fatigue_level] || item.fatigue_level}`)
+  if (item.physical_feeling) parts.push(item.physical_feeling)
+  if (item.execution_difficulty) parts.push(`执行困难：${item.execution_difficulty}`)
+  return parts.join('，')
+}
 
 function resetFeedback() {
   feedback.value = { mood_status: '', fatigue_level: '', physical_feeling: '', execution_difficulty: '' }
@@ -63,6 +76,7 @@ async function submitFeedback() {
     await trackingApi.feedback(payload)
     toast.success('已记录，感受不会自动当作指标变化')
     resetFeedback()
+    feedbacks.value = await trackingApi.feedbackList(days.value > 90 ? days.value : 90)
   } catch (error) {
     toast.error(error instanceof Error ? error.message : '记录失败')
   } finally {
@@ -72,7 +86,12 @@ async function submitFeedback() {
 
 async function load() {
   const codes = metrics.map((item) => item.code)
-  trends.value = await trackingApi.trends(codes, days.value)
+  const [trendList, feedbackList] = await Promise.all([
+    trackingApi.trends(codes, days.value),
+    trackingApi.feedbackList(days.value).catch(() => []),
+  ])
+  trends.value = trendList
+  feedbacks.value = feedbackList
   if (!trends.value.find((item) => item.metric_code === active.value) && trends.value.length) {
     active.value = trends.value[0].metric_code
   }
@@ -241,5 +260,33 @@ onMounted(load)
         </section>
       </div>
     </div>
+
+    <section class="glass card-pad">
+      <div class="flex items-center justify-between">
+        <h2 class="text-[14px] font-semibold">最近的身体感受</h2>
+        <span class="text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">{{ feedbacks.length }} 条</span>
+      </div>
+      <EmptyState
+        v-if="!feedbacks.length"
+        title="还没有记录"
+        description="在上面的表单里写下主观感受，之后可以在这里回看"
+      />
+      <ul v-else class="mt-3 flex flex-col gap-2">
+        <li
+          v-for="item in feedbacks"
+          :key="item.id"
+          class="rounded-[14px] border px-3 py-2"
+          :style="{ borderColor: 'var(--color-border)' }"
+        >
+          <p class="text-[12px]">{{ feedbackSummary(item) }}</p>
+          <p class="mt-1 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+            {{ new Date(item.recorded_at).toLocaleString('zh-CN') }}
+          </p>
+        </li>
+      </ul>
+      <p class="mt-2 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+        感受只作描述，不换算成指标，也不参与风险分级
+      </p>
+    </section>
   </div>
 </template>

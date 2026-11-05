@@ -64,6 +64,24 @@ async def list_metrics(
     ]
 
 
+async def list_feedback(session: AsyncSession, user_id: UUID, days: int = 30) -> list[dict[str, Any]]:
+    """身体感受按时间倒序返回。感受只描述主观状态，不换算成指标。"""
+    today = date.today()
+    rows = await plan_repo.feedbacks_between(session, user_id, today - timedelta(days=days), today)
+    return [
+        {
+            "id": row.id,
+            "recorded_at": row.recorded_at,
+            "mood_status": row.mood_status,
+            "fatigue_level": row.fatigue_level,
+            "physical_feeling": row.physical_feeling,
+            "execution_difficulty": row.execution_difficulty,
+            "additional_feedback": row.additional_feedback,
+        }
+        for row in sorted(rows, key=lambda item: item.recorded_at, reverse=True)
+    ]
+
+
 async def add_feedback(session: AsyncSession, user_id: UUID, payload) -> HealthFeedbackRecord:
     record = HealthFeedbackRecord(
         user_id=user_id,

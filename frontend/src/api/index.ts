@@ -6,6 +6,7 @@ import type {
   ConsentRecord,
   Conversation,
   ExtractedDocument,
+  FeedbackRecord,
   FileItem,
   PageData,
   Plan,
@@ -94,6 +95,7 @@ export const trackingApi = {
       params: { codes: codes.join(','), days, page: 1, page_size: 200 },
     }),
   feedback: (payload: Record<string, unknown>) => api<{ id: string }>('/tracking/feedback', { body: payload }),
+  feedbackList: (days = 30) => api<FeedbackRecord[]>('/tracking/feedback', { params: { days } }),
   summary: (planId?: string) => api<TrackingSummary>('/tracking/summary', { params: { plan_id: planId } }),
   trends: (codes: string[], days: number) =>
     api<Trend[]>('/tracking/trends', { params: { codes: codes.join(','), days } }),
