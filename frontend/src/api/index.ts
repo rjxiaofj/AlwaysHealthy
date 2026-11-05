@@ -14,6 +14,7 @@ import type {
   Plan,
   PlanSummary,
   Profile,
+  ProfilePatchBody,
   Reminder,
   ReportDetail,
   ReportSummary,
@@ -33,7 +34,7 @@ export const authApi = {
 
 export const profileApi = {
   get: () => api<Profile>('/profiles/me'),
-  patch: (payload: Record<string, unknown>) => api<Profile>('/profiles/me', { method: 'PATCH', body: payload }),
+  patch: (payload: ProfilePatchBody) => api<Profile>('/profiles/me', { method: 'PATCH', body: payload }),
   addHistory: (payload: { history_type: string; condition_code: string; description?: string }) =>
     api<{ id: string }>('/profiles/me/histories', { body: payload }),
   upload: (file: File) => {

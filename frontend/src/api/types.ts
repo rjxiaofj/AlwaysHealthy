@@ -54,6 +54,18 @@ export interface Profile {
   medical_histories: MedicalHistory[]
 }
 
+// 空值统一用 null：后端按字段是否出现区分「不改」，按 null 识别「清空」，
+// 所以这里不能写成可选字段，漏传一个键就等于那次编辑不生效
+export interface ProfilePatchBody {
+  birth_date: string | null
+  sex: string | null
+  height_cm: number | null
+  weight_kg: number | null
+  waist_cm: number | null
+  occupation: string | null
+  lifestyle: Record<string, number | string | null>
+}
+
 export interface RiskFactor {
   rule_id: string
   indicator: string

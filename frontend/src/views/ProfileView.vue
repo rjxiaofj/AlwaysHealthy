@@ -5,6 +5,7 @@ import { consentApi, profileApi, reportApi } from '@/api'
 import { tokens } from '@/api/client'
 import type { ConsentRecord, EmergencyEvent, ExtractedDocument, FileItem, Profile, ReportSummary } from '@/api/types'
 import { useToastStore } from '@/stores/toast'
+import { buildProfilePatch, formFromProfile } from '@/views/profileLogic'
 
 const toast = useToastStore()
 const profile = ref<Profile | null>(null)
@@ -63,42 +64,13 @@ async function load() {
   files.value = fileList
   consents.value = consentList
   emergencies.value = emergencyList
-  const lifestyle = data.lifestyle || {}
-  form.value = {
-    birth_date: data.birth_date || '',
-    sex: data.sex || '',
-    height_cm: data.height_cm ? String(data.height_cm) : '',
-    weight_kg: data.weight_kg ? String(data.weight_kg) : '',
-    waist_cm: data.waist_cm ? String(data.waist_cm) : '',
-    occupation: data.occupation || '',
-    sleep_hours: lifestyle.sleep_hours ? String(lifestyle.sleep_hours) : '',
-    exercise_days: lifestyle.exercise_days !== undefined && lifestyle.exercise_days !== null ? String(lifestyle.exercise_days) : '',
-    sedentary_hours: lifestyle.sedentary_hours ? String(lifestyle.sedentary_hours) : '',
-    smoking_status: (lifestyle.smoking_status as string) || '',
-    drinking_frequency: (lifestyle.drinking_frequency as string) || '',
-  }
+  form.value = formFromProfile(data)
 }
 
 async function save() {
   busy.value = true
   try {
-    const num = (value: string) => (value.trim() === '' ? null : Number(value))
-    const lifestyle: Record<string, unknown> = {}
-    if (form.value.sleep_hours) lifestyle.sleep_hours = Number(form.value.sleep_hours)
-    if (form.value.exercise_days) lifestyle.exercise_days = Number(form.value.exercise_days)
-    if (form.value.sedentary_hours) lifestyle.sedentary_hours = Number(form.value.sedentary_hours)
-    if (form.value.smoking_status) lifestyle.smoking_status = form.value.smoking_status
-    if (form.value.drinking_frequency) lifestyle.drinking_frequency = form.value.drinking_frequency
-
-    profile.value = await profileApi.patch({
-      birth_date: form.value.birth_date || null,
-      sex: form.value.sex || null,
-      height_cm: num(form.value.height_cm),
-      weight_kg: num(form.value.weight_kg),
-      waist_cm: num(form.value.waist_cm),
-      occupation: form.value.occupation || null,
-      lifestyle,
-    })
+    profile.value = await profileApi.patch(buildProfilePatch(form.value))
     toast.success('档案已更新')
   } catch (error) {
     toast.error(error instanceof Error ? error.message : '保存失败')

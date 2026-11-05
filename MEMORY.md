@@ -435,6 +435,27 @@
 
 测试写完却没人自动跑，等于靠记性。上一轮 conftest 路径那个问题只在「从仓库根连跑两次」时才暴露，人工很少这么跑，所以潜伏到现在。CI 用 Python 3.13（对齐 `backend/Dockerfile` 的 `python:3.13-slim`）与 Node 22（`vitest@5.1.0` 要求 `^22.12.0`）。依赖用 `npm ci` 不用 `npm install`：后者会顺手改锁文件，把锁文件漂移这个信号吞掉。
 
+## 2026-11-05 档案保存没落库
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| PF-01 | PATCH 设职业为「教师」，再用另一个请求 GET | 能读到「教师」 | 改动前读回 None，`patch_profile` 只有 `flush()` 没有 `commit()`，请求结束事务被回滚 | profile_service.patch_profile |
+| PF-02 | 清空生日、职业、体重 | 三个字段变 null | 改动前 `elif value is not None` 把显式 null 当没传，接口 200 但值不变 | profile_service.patch_profile |
+| PF-03 | 清空生活方式里的睡眠时长 | 该键从 JSON 里消失 | 改动前 `merged.update` 会把老值覆盖成 null，键还留着 | profile_service.patch_profile |
+| PF-04 | 只传 sex，不带其他字段 | 职业与睡眠时长保持 | 符合 | 无 |
+| PF-05 | 已经是 null 的字段再清一次 | 档案版本不变 | 改动前每次保存都涨一版，因为 lifestyle 恒被当成改动 | profile_service.patch_profile |
+| PF-06 | 真实改一个字段 | 版本 +1 | 符合 | 无 |
+| PF-07 | 传空的 lifestyle | 版本不变，原值保留 | 符合 | 无 |
+| PF-08 | 添加既往史后用另一个请求读 | 能读到该条记录 | 改动前 `add_history` 也只 flush，记录随事务丢弃 | profile_service.add_history |
+| PF-09 | 变异：把 `commit()` 改回 `flush()` | PF-01 至 PF-07 应有失败 | 4 项失败，`assert None == '教师'` | profile_service.patch_profile |
+| PF-10 | 前端清空某个生活方式项后保存 | 请求体带该键且值为 null | 改动前用 `if (form.value.sleep_hours)` 过滤，空值直接不进请求体 | views/profileLogic.ts::buildProfilePatch |
+| PF-11 | 数值填非数字 | 报错提示，不静默清空 | 改动前 `Number('一百七')` 得 NaN，序列化成 null 后被当成清空 | 同上 |
+| PF-12 | 变异：lifestyle 只发非空子键 | PF-10 相关断言应失败 | 3 项失败 | views/profileLogic.ts::buildProfilePatch |
+
+会话依赖只 yield 不提交，写操作必须由 service 自己 commit。`profile_service` 是唯一全程零 commit 的 service，其余（plan 13 处、graph 7 处、auth 4 处）都有。前端与后端对「空值」的理解也不一致：前端省略键，后端用 `is not None` 过滤，两边合起来等于清空操作永远无效。`pytest` 166 项通过。
+
+旧用例 `test_nh_03` 开头先写身高 175 体重 88（BMI 28.7）再断言「信息不足」，它一直是绿的，因为那次写入根本没落库。修好提交后 BMI 被正确算成「高」，用例才红。现在改成不预写档案，断言空档案下是信息不足。
+
 ## 已知取舍
 
 1. 知识检索默认走关键词通道。BGE-M3 与 Chroma 的代码保留在 `app/integrations/chroma_client.py`，需要安装 torch 与 chromadb 并下载模型权重后把 `EMBEDDING_BACKEND` 切到 bge。两套索引独立，不混用向量。

@@ -15,6 +15,14 @@
 
 改报告或评估逻辑后，老报告内容不能变。验证方式：生成一份报告，改档案，再读报告，内容应保持一致。
 
+## 档案写入
+
+- 会话依赖 `db_session` 只负责 yield，请求结束不回滚也不提交，所以 service 必须自己 `commit()`。`profile_service.patch_profile` 曾经只有 `flush()`，结果是前端提示「档案已更新」、数据库里什么都没变，刷新后又回到旧值。新增写接口时先确认落在哪个 service，再看那个 service 有没有 commit。
+- `ProfilePatch` 用 `model_dump(exclude_unset=True)` 拿改动字段，这已经能区分「没传」与「传了 null」，因此不要再加 `value is not None` 过滤。加了之后清空生日、职业这类操作会被当成没传，接口返回 200 但值不变。
+- `lifestyle` 是 JSON 列，写入是合并语义。子键传 `null` 表示删掉这个子键，整体传 `null` 表示不动。前端必须把五个子键每次都给全，漏传等于那项删不掉。
+- 空保存不递增 `profile_version`。版本是历史评估快照的锚点，只在真的改了字段时才加一。
+- 前端 `buildProfilePatch` 与后端 `patch_profile` 是同一套语义的两半，改一侧必须同时改另一侧，否则出现「点了没反应」或「清不掉的字段」。
+
 ## 指标来源与质量
 
 - `health_metric_records.source_type` 区分 manual、wearable 等来源，`measurement_context` 只记设备类型与来源。

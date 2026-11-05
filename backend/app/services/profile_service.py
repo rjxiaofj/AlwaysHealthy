@@ -49,21 +49,38 @@ async def ensure_profile(session: AsyncSession, user_id: UUID) -> HealthProfile:
 
 async def patch_profile(session: AsyncSession, user_id: UUID, data: ProfilePatch) -> HealthProfile:
     profile = await ensure_profile(session, user_id)
+    # exclude_unset 已经能区分「没传这个字段」与「传了 null」，所以下面不能再用
+    # value is not None 过滤：那样会把清空生日、职业这类操作当成没传，点了保存也不生效
     changes = data.model_dump(exclude_unset=True)
     touched = False
     for field, value in changes.items():
-        if field == "lifestyle" and value is not None:
+        if field == "lifestyle":
+            # 整体传 null 表示不动生活方式；子键传 null 表示把这个子键去掉
+            if value is None:
+                continue
             merged = dict(profile.lifestyle or {})
-            merged.update(value)
-            profile.lifestyle = merged
-            touched = True
-        elif value is not None:
+            for key, item in value.items():
+                if item is None:
+                    merged.pop(key, None)
+                else:
+                    merged[key] = item
+            if merged != (profile.lifestyle or {}):
+                profile.lifestyle = merged
+                touched = True
+        elif value is None:
+            # 显式清空。本来就是空的不算改动，避免空保存也递增版本
+            if getattr(profile, field) is not None:
+                setattr(profile, field, value)
+                touched = True
+        else:
             setattr(profile, field, value)
             touched = True
     if touched:
         # 档案版本是历史评估快照的锚点，任何字段变动都要递增
         profile.profile_version = (profile.profile_version or 1) + 1
-    await session.flush()
+    # 会话依赖只负责 yield，不会在请求结束时提交，这里必须自己 commit，
+    # 否则请求一结束事务被回滚，用户看到「档案已更新」但值根本没落库
+    await session.commit()
     return profile
 
 
@@ -76,6 +93,9 @@ async def add_history(session: AsyncSession, user_id: UUID, payload) -> MedicalH
     )
     session.add(record)
     await session.flush()
+    await session.commit()
+    # commit 默认过期实例属性，后面还要读 id，显式刷新一次
+    await session.refresh(record)
     return record
 
 

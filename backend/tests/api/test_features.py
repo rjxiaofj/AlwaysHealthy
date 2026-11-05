@@ -30,9 +30,7 @@ async def test_nh_02_profile_save_and_bmi(client, auth):
 
 
 async def test_nh_03_assessment_has_five_dimensions_with_sources(client, auth):
-    await patch_profile(client, auth)
-
-    # 只有身高体重时信息不足，这一档不能算低风险
+    # 档案与指标都为空时五维都缺输入，这一档不能算低风险，也不能算高
     empty = await client.post("/api/v1/assessments", headers=auth)
     assert empty.status_code == 200
     assert empty.json()["data"]["overall_level"] == "信息不足"
