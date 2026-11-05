@@ -69,6 +69,7 @@ async def persist_draft(
                 duration_minutes=item.get("duration_minutes"),
                 completion_criteria=item["completion_criteria"],
                 checkin_type=item.get("checkin_type", "boolean"),
+                reminder_enabled=True,
             )
         )
 
@@ -177,6 +178,8 @@ async def adjust(session: AsyncSession, user_id: UUID, plan_id: UUID, reason: st
                     duration_minutes=task.duration_minutes,
                     completion_criteria=task.completion_criteria,
                     checkin_type=task.checkin_type,
+                    # 沿用原任务的开关，调整版本不该把用户关掉的提醒又打开
+                    reminder_enabled=task.reminder_enabled,
                 )
             )
 
@@ -248,6 +251,8 @@ async def shift(
                     duration_minutes=task.duration_minutes,
                     completion_criteria=task.completion_criteria,
                     checkin_type=task.checkin_type,
+                    # 沿用原任务的开关，调整版本不该把用户关掉的提醒又打开
+                    reminder_enabled=task.reminder_enabled,
                 )
             )
         base.status = "superseded"
@@ -309,6 +314,7 @@ async def revise_draft(
                 duration_minutes=item.get("duration_minutes"),
                 completion_criteria=item["completion_criteria"],
                 checkin_type=item.get("checkin_type", "boolean"),
+                reminder_enabled=True,
             )
         )
     await session.commit()
@@ -429,6 +435,7 @@ async def detail(session: AsyncSession, user_id: UUID, plan_id: UUID) -> dict[st
                 "duration_minutes": task.duration_minutes,
                 "completion_criteria": task.completion_criteria,
                 "checkin_type": task.checkin_type,
+                "reminder_enabled": task.reminder_enabled,
                 "status": task.status,
                 "checkin_status": status_map.get(task.id),
             }

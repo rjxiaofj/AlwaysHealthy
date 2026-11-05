@@ -21,6 +21,8 @@ const feedbackTask = ref('')
 const feedbackText = ref('')
 const rescheduleTask = ref('')
 const rescheduleDate = ref('')
+const editTime = ref('')
+const editReminder = ref(true)
 
 const today = new Date().toISOString().slice(0, 10)
 
@@ -163,6 +165,8 @@ function openFeedback(task: Task) {
 function openReschedule(task: Task) {
   rescheduleTask.value = rescheduleTask.value === task.id ? '' : task.id
   rescheduleDate.value = task.scheduled_date
+  editTime.value = task.scheduled_time || ''
+  editReminder.value = task.reminder_enabled
 }
 
 async function reschedule(task: Task) {
@@ -170,18 +174,25 @@ async function reschedule(task: Task) {
     toast.error('选择新的任务日期')
     return
   }
-  if (rescheduleDate.value === task.scheduled_date) {
-    toast.error('新的日期与当前一致')
+  const dateChanged = rescheduleDate.value !== task.scheduled_date
+  const timeChanged = editTime.value && editTime.value !== (task.scheduled_time || '')
+  const reminderChanged = editReminder.value !== task.reminder_enabled
+  if (!dateChanged && !timeChanged && !reminderChanged) {
+    toast.error('日期、时间与提醒都没有变化')
     return
   }
   busy.value = true
   try {
-    await planApi.patchTask(task.id, { scheduled_date: rescheduleDate.value })
+    await planApi.patchTask(task.id, {
+      ...(dateChanged ? { scheduled_date: rescheduleDate.value } : {}),
+      ...(timeChanged ? { scheduled_time: editTime.value } : {}),
+      ...(reminderChanged ? { reminder_enabled: editReminder.value } : {}),
+    })
     rescheduleTask.value = ''
-    toast.success('任务日期已调整')
+    toast.success('任务已更新')
     await load(selected.value?.id)
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : '改期失败')
+    toast.error(error instanceof Error ? error.message : '调整失败')
   } finally {
     busy.value = false
   }
@@ -375,7 +386,7 @@ onMounted(() => load())
                         class="btn btn-ghost !px-2 !py-1 text-[11px]"
                         @click="openReschedule(task)"
                       >
-                        改日期
+                        调整
                       </button>
                       <button class="btn btn-primary !px-3 !py-1 text-[11px]" :disabled="busy" @click="checkin(task, 'completed')">完成</button>
                       <button class="btn btn-ghost !px-3 !py-1 text-[11px]" :disabled="busy" @click="checkin(task, 'skipped')">跳过</button>
@@ -393,11 +404,19 @@ onMounted(() => load())
                         :max="selected.end_date"
                       />
                     </div>
+                    <div>
+                      <label class="label" :for="`time-${task.id}`">提醒时间</label>
+                      <input :id="`time-${task.id}`" v-model="editTime" class="field w-[112px]" placeholder="HH:MM" />
+                    </div>
+                    <label class="flex items-center gap-2 pb-2 text-[12px]">
+                      <input v-model="editReminder" type="checkbox" />
+                      当天提醒
+                    </label>
                     <button class="btn btn-primary !py-1 text-[11px]" :disabled="busy" @click="reschedule(task)">
-                      确认改期
+                      保存调整
                     </button>
                     <p class="text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
-                      只能在计划周期内移动，已打卡的任务不能改
+                      日期只能落在计划周期内，已打卡的任务不能改日期，关掉提醒后当天不再提示这个任务
                     </p>
                   </div>
                   <div v-if="feedbackTask === task.id" class="mt-2">

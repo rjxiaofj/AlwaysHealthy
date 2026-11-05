@@ -23,6 +23,7 @@ class TaskOut(BaseModel):
     duration_minutes: int | None
     completion_criteria: str
     checkin_type: str
+    reminder_enabled: bool = False
     status: str
     checkin_status: str | None = None
 

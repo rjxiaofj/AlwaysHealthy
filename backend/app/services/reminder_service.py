@@ -24,6 +24,9 @@ async def sync(session: AsyncSession, user_id: UUID) -> None:
     for task in tasks:
         if task.id in checked:
             continue
+        # 任务级提醒可以关掉，计划级的两条提醒不受单个开关影响
+        if not task.reminder_enabled:
+            continue
         key = f"task_due:{task.id}:{today.isoformat()}"
         if await chat_repo.notification_by_dedup(session, key):
             continue

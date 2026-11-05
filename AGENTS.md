@@ -57,6 +57,7 @@
 - 评估记录必须存 `profile_snapshot`，历史报告读快照，不读当前档案。
 - `health_plan_versions` 只增不改。生效版本靠 `health_plans.current_version_id` 指向，旧版本保留。
 - 打卡、提醒、报告创建必须幂等。打卡唯一键 `(task_id, checkin_date)`，重复提交返回已有记录而不是新增。
+- 任务级提醒开关 `plan_tasks.reminder_enabled` 只在 `reminder_service.sync` 里判断，管的是当天任务待完成提醒。计划级提醒不受它影响。新建设置默认开启，复制版本时沿用原任务的值。
 - 设备读数只有 `quality_status=verified` 才允许进入评估快照，其余只进指标表，过滤点在 `app/repositories/health.py::latest_metrics`。
 - 体检资料的识别结果只进 `file_assets.parsed_payload`，用户确认后才写 `health_metric_records`。不做 OCR，解析不出来的保持 `unsupported`，不得用模型猜字段。
 - `security_audit_logs` 与 `consent_records` 只追加不覆盖。审计不得记录密码、令牌原文、完整档案。

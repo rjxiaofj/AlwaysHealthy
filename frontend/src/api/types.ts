@@ -125,6 +125,7 @@ export interface Task {
   duration_minutes: number | null
   completion_criteria: string
   checkin_type: string
+  reminder_enabled: boolean
   status: string
   checkin_status: string | null
 }
