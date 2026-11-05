@@ -14,6 +14,11 @@ os.environ["KNOWLEDGE_DIR"] = str(Path(__file__).resolve().parents[2] / "knowled
 os.environ["STORAGE_DIR"] = "./test_storage"
 os.environ["JWT_SECRET"] = "test-secret-key-that-is-long-enough-for-hs256"
 
+# 本机 backend/.env 里有真实模型密钥（跑演示时填的），不挡住的话整个测试全会真的去调
+# DeepSeek：一轮从三十秒变成九分钟、每次烧掉几毛额度，断言还随模型输出飘。CI 上 .env
+# 不入库所以密钥本来就是空的，这里显式清掉，两边跑的是同一条「模型不可用」的确定路径
+os.environ["LLM_API_KEY"] = ""
+
 # init_models 只建缺失的表，不会给已有表补列。每次测试从空库起，避免模型改了还跑旧结构
 if _DB_FILE.exists():
     _DB_FILE.unlink()
