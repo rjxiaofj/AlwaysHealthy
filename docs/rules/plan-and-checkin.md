@@ -29,6 +29,19 @@
 
 未完成任务允许填写原因。完成率只反映执行情况，不解释为健康改善或恶化，报告与跟踪文案都要保持这个口径。
 
+## 改期
+
+两种粒度，别混用：
+
+- `POST /plans/{id}/shift` 整体平移。只在计划没开始且当前版本没有打卡时可用，会生成新版本，任务 id 全变。
+- `PATCH /tasks/{id}` 单条调整。只能动当前版本的任务，日期要在计划周期内、不早于今天，任务已有打卡就拒绝。
+
+已经开始的计划一律走单条调整。整体改期会把旧打卡挂到不存在的任务上。
+
+## 提醒
+
+提醒按访问时生成，没有后台调度。`plan_tasks.reminder_enabled` 只挡当天任务待完成这一条，计划级的逾期与结束提醒不受它影响。新建任务默认开启，复制版本沿用原值。
+
 ## 回归
 
 `tests/unit/test_plan_validator.py`、`tests/api/test_features.py::test_nh_04_plan_generate_approve_checkin_adjust`。
