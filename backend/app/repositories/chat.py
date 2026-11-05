@@ -118,9 +118,12 @@ async def runs_of_conversation(session: AsyncSession, conversation_id: UUID) -> 
     return list(rows)
 
 
-async def emergency_events_of(session: AsyncSession, user_id: UUID) -> list[EmergencyEvent]:
+async def emergency_events_of(session: AsyncSession, user_id: UUID, limit: int = 20) -> list[EmergencyEvent]:
     rows = await session.scalars(
-        select(EmergencyEvent).where(EmergencyEvent.user_id == user_id).order_by(EmergencyEvent.triggered_at.desc())
+        select(EmergencyEvent)
+        .where(EmergencyEvent.user_id == user_id)
+        .order_by(EmergencyEvent.triggered_at.desc())
+        .limit(limit)
     )
     return list(rows)
 

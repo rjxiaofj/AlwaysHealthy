@@ -3,7 +3,7 @@ import { onMounted, ref } from 'vue'
 
 import { consentApi, profileApi, reportApi } from '@/api'
 import { tokens } from '@/api/client'
-import type { ConsentRecord, ExtractedDocument, FileItem, Profile, ReportSummary } from '@/api/types'
+import type { ConsentRecord, EmergencyEvent, ExtractedDocument, FileItem, Profile, ReportSummary } from '@/api/types'
 import { useToastStore } from '@/stores/toast'
 
 const toast = useToastStore()
@@ -11,6 +11,7 @@ const profile = ref<Profile | null>(null)
 const reports = ref<ReportSummary[]>([])
 const files = ref<FileItem[]>([])
 const consents = ref<ConsentRecord[]>([])
+const emergencies = ref<EmergencyEvent[]>([])
 const busy = ref(false)
 const uploading = ref(false)
 const downloading = ref('')
@@ -50,16 +51,18 @@ const conditions = [
 ]
 
 async function load() {
-  const [data, reportList, fileList, consentList] = await Promise.all([
+  const [data, reportList, fileList, consentList, emergencyList] = await Promise.all([
     profileApi.get(),
     reportApi.list(),
     profileApi.files(),
     consentApi.list(),
+    profileApi.emergencyEvents().catch(() => []),
   ])
   profile.value = data
   reports.value = reportList
   files.value = fileList
   consents.value = consentList
+  emergencies.value = emergencyList
   const lifestyle = data.lifestyle || {}
   form.value = {
     birth_date: data.birth_date || '',
@@ -365,6 +368,29 @@ onMounted(load)
           <p v-if="!reports.length" class="mt-2 text-[12px]" :style="{ color: 'var(--color-text-tertiary)' }">暂无报告</p>
         </section>
 
+        <section v-if="emergencies.length" class="glass card-pad">
+          <div class="flex items-center justify-between">
+            <h2 class="text-[14px] font-semibold">紧急提示记录</h2>
+            <span class="text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">共 {{ emergencies.length }} 次</span>
+          </div>
+          <ul class="mt-2 flex flex-col gap-2">
+            <li
+              v-for="item in emergencies"
+              :key="item.id"
+              class="rounded-[14px] border px-3 py-2"
+              :style="{ borderColor: 'var(--color-border)' }"
+            >
+              <p class="text-[12px]">{{ item.trigger_reason || '触发了紧急提示' }}</p>
+              <p class="mt-1 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+                {{ new Date(item.triggered_at).toLocaleString('zh-CN') }} · {{ item.urgency }} · 当时已提示优先就医
+              </p>
+            </li>
+          </ul>
+          <p class="mt-2 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+            这里只记录对话中触发过的紧急提示，不代表诊断结论，也不改变当时的处置建议
+          </p>
+        </section>
+
         <section class="glass card-pad">
           <h2 class="mb-2 text-[14px] font-semibold">体检资料</h2>
           <input class="field" type="file" accept=".pdf,.jpg,.jpeg,.png" :disabled="uploading" @change="upload" />
@@ -465,7 +491,7 @@ onMounted(load)
 
     <section class="glass card-pad text-[11px] leading-relaxed" :style="{ color: 'var(--color-text-tertiary)' }">
       <p>数据用途：仅用于本平台的健康评估与管理，评估结果不构成诊断、处方或治疗建议。</p>
-      <p>外部模型只接收当前任务所需的健康描述，不发送账号、令牌与完整报告原件。演示环境使用模拟数据。</p>
+      <p>外部模型只接收当前任务所需的健康描述，不发送账号、令牌与完整报告原件。模型不可用时改用本地规则文案，评估结论不依赖模型是否可用。</p>
     </section>
   </div>
 </template>

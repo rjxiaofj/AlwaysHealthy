@@ -109,6 +109,29 @@ async def apply_document_extracted(
     return ok(request, result)
 
 
+@router.get("/profiles/me/emergency-events")
+async def emergency_events(
+    request: Request,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(db_session),
+):
+    rows = await chat_repo.emergency_events_of(session, user.id)
+    return ok(
+        request,
+        [
+            {
+                "id": str(row.id),
+                "triggered_at": row.triggered_at,
+                "trigger_reason": row.trigger_reason,
+                "matched_rules": row.matched_rules or [],
+                "urgency": row.urgency,
+                "response_status": row.response_status,
+            }
+            for row in rows
+        ],
+    )
+
+
 @router.get("/files/{file_id}/download")
 async def download_file(
     file_id: UUID,

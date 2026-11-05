@@ -5,6 +5,7 @@ import type {
   ChatMessage,
   ConsentRecord,
   Conversation,
+  EmergencyEvent,
   ExtractedDocument,
   FeedbackRecord,
   FileItem,
@@ -40,6 +41,7 @@ export const profileApi = {
     return api<{ id: string; parse_status: string }>('/profiles/me/documents', { formData: form })
   },
   files: () => api<FileItem[]>('/profiles/me/documents'),
+  emergencyEvents: () => api<EmergencyEvent[]>('/profiles/me/emergency-events'),
   extracted: (id: string) => api<ExtractedDocument>(`/profiles/me/documents/${id}/extracted`),
   applyExtracted: (id: string, metricCodes: string[]) =>
     api<{ applied: number; skipped: number }>(`/profiles/me/documents/${id}/apply`, {

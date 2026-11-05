@@ -96,6 +96,10 @@ async def main():
                 events = await read_sse(resp)
             print("emergency", [e[0] for e in events], [e[1] for e in events if e[0] == "token"])
 
+            r = await client.get("/api/v1/profiles/me/emergency-events", headers=headers)
+            rows = r.json()["data"]
+            print("emergency-events", r.status_code, len(rows), rows[0]["urgency"] if rows else None)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

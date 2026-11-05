@@ -289,6 +289,15 @@ export interface FeedbackRecord {
   additional_feedback: string | null
 }
 
+export interface EmergencyEvent {
+  id: string
+  triggered_at: string
+  trigger_reason: string
+  matched_rules: Array<{ rule_id?: string; label?: string }>
+  urgency: string
+  response_status: string
+}
+
 export interface ConsentRecord {
   id: string
   consent_type: string
