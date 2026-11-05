@@ -2,9 +2,9 @@
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
-import { reportApi } from '@/api'
+import { knowledgeApi, reportApi } from '@/api'
 import { tokens } from '@/api/client'
-import type { ReportDetail } from '@/api/types'
+import type { KnowledgeSource, ReportDetail } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
 import RiskBadge from '@/components/RiskBadge.vue'
 import { useToastStore } from '@/stores/toast'
@@ -12,6 +12,7 @@ import { useToastStore } from '@/stores/toast'
 const route = useRoute()
 const toast = useToastStore()
 const report = ref<ReportDetail | null>(null)
+const sources = ref<KnowledgeSource[]>([])
 const loading = ref(true)
 
 async function download() {
@@ -39,6 +40,7 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+  sources.value = await knowledgeApi.sources().catch(() => [])
 })
 </script>
 
@@ -77,6 +79,21 @@ onMounted(async () => {
           </li>
         </ul>
       </section>
+
+      <details v-if="sources.length" class="glass card-pad">
+        <summary class="cursor-pointer text-[14px] font-semibold">资料来源台账 {{ sources.length }} 份</summary>
+        <ul class="mt-2 flex flex-col gap-2">
+          <li v-for="item in sources" :key="item.source_id" class="rounded-[14px] border px-3 py-2" :style="{ borderColor: 'var(--color-border)' }">
+            <p class="text-[12px]">{{ item.title }}</p>
+            <p class="mt-1 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+              {{ item.issuing_org }} · 版本 {{ item.version || '未标注' }} · {{ item.publish_date || '发布日期未标注' }} · 适用 {{ item.applicable_population }}
+            </p>
+          </li>
+        </ul>
+        <p class="mt-2 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+          报告里的医学依据按标题与版本取自这些资料，摘要随代码库一起发布，正式引用请核对出版方原文
+        </p>
+      </details>
     </template>
   </div>
 </template>

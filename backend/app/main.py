@@ -16,6 +16,7 @@ from app.db.checkpointer import close_checkpointer, get_checkpointer
 from app.db.session import SessionLocal, init_models
 from app.graph.deps import GraphDeps
 from app.integrations.llm_client import get_llm
+from app.services import knowledge_service
 from app.services.graph_service import GraphService
 from app.tools.knowledge_base.retriever import get_retriever
 
@@ -41,7 +42,14 @@ async def lifespan(app: FastAPI):
     app.state.retriever = retriever
     app.state.llm = llm
     app.state.graph_service = GraphService(deps, checkpointer)
-    log.info("app ready retriever_chunks=%s checkpointer=%s", getattr(retriever, "size", 0), settings.checkpointer)
+    async with SessionLocal() as session:
+        synced = await knowledge_service.sync_sources(session)
+    log.info(
+        "app ready retriever_chunks=%s checkpointer=%s knowledge_synced=%s",
+        getattr(retriever, "size", 0),
+        settings.checkpointer,
+        synced,
+    )
 
     yield
 

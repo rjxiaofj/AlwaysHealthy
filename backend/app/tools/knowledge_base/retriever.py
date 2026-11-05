@@ -47,7 +47,7 @@ def tokenize(text: str) -> list[str]:
     return tokens
 
 
-def _parse_document(path: Path) -> list[Evidence]:
+def load_document(path: Path) -> tuple[dict[str, Any], str]:
     raw = path.read_text(encoding="utf-8")
     if not raw.startswith("---"):
         raise ValueError(f"{path.name} 缺少元数据头")
@@ -55,6 +55,15 @@ def _parse_document(path: Path) -> list[Evidence]:
     meta = yaml.safe_load(meta_block) or {}
     if not meta.get("source_id"):
         raise ValueError(f"{path.name} 缺少 source_id")
+    return meta, body
+
+
+def read_metadata(path: Path) -> dict[str, Any]:
+    return load_document(path)[0]
+
+
+def _parse_document(path: Path) -> list[Evidence]:
+    meta, body = load_document(path)
 
     chunks: list[Evidence] = []
     sections = re.split(r"\n##\s+", "\n" + body.strip())

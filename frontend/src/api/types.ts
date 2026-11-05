@@ -218,6 +218,20 @@ export interface ReportDetail {
   }
 }
 
+export interface KnowledgeSource {
+  source_id: string
+  title: string
+  issuing_org: string
+  document_type: string
+  version: string
+  publish_date: string | null
+  effective_status: string
+  applicable_population: string
+  dimensions: string[]
+  original_url: string | null
+  import_date: string
+}
+
 export interface Reminder {
   id: string
   notification_type: string

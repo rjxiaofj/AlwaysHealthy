@@ -100,6 +100,10 @@ async def main():
             rows = r.json()["data"]
             print("emergency-events", r.status_code, len(rows), rows[0]["urgency"] if rows else None)
 
+            r = await client.get("/api/v1/knowledge/sources", headers=headers)
+            rows = r.json()["data"]
+            print("knowledge-sources", r.status_code, len(rows), rows[0]["issuing_org"] if rows else None)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

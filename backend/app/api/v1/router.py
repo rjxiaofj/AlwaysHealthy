@@ -6,6 +6,7 @@ from app.api.v1.endpoints import (
     consents,
     conversations,
     health,
+    knowledge,
     plans,
     profiles,
     reminders,
@@ -23,6 +24,7 @@ api_router.include_router(plans.router)
 api_router.include_router(tracking.router)
 api_router.include_router(reports.router)
 api_router.include_router(reminders.router)
+api_router.include_router(knowledge.router)
 
 health_router = APIRouter()
 health_router.include_router(health.router)

@@ -9,6 +9,7 @@ import type {
   ExtractedDocument,
   FeedbackRecord,
   FileItem,
+  KnowledgeSource,
   PageData,
   Plan,
   PlanSummary,
@@ -114,6 +115,10 @@ export const reportApi = {
 export const reminderApi = {
   list: () => api<Reminder[]>('/reminders'),
   read: (id: string) => api<null>(`/reminders/${id}/read`, { body: {} }),
+}
+
+export const knowledgeApi = {
+  sources: () => api<KnowledgeSource[]>('/knowledge/sources'),
 }
 
 export const consentApi = {
