@@ -6,6 +6,7 @@ import type { FeedbackRecord, Trend } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
 import TrendChart from '@/components/TrendChart.vue'
 import { useToastStore } from '@/stores/toast'
+import { localDateTimeInput } from '@/utils/datetime'
 
 const toast = useToastStore()
 
@@ -27,7 +28,7 @@ const busy = ref(false)
 const form = ref({
   metric_code: 'systolic_bp',
   value: '',
-  measured_at: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+  measured_at: localDateTimeInput(),
   fasting: true,
 })
 
@@ -103,9 +104,16 @@ async function submit() {
     toast.error('填写有效数值')
     return
   }
+  // 时间框被清空时 new Date('') 是 Invalid Date，直接 toISOString 会抛 RangeError，
+  // 用户会在提示里看到「Invalid time value」这种英文
+  const measuredAt = new Date(form.value.measured_at)
+  if (!form.value.measured_at || Number.isNaN(measuredAt.getTime())) {
+    toast.error('选择测量时间')
+    return
+  }
   busy.value = true
   try {
-    await trackingApi.addMetric(form.value.metric_code, value, new Date(form.value.measured_at).toISOString(), {
+    await trackingApi.addMetric(form.value.metric_code, value, measuredAt.toISOString(), {
       fasting: form.value.metric_code === 'fasting_glucose' ? form.value.fasting : undefined,
     })
     toast.success('已记录')

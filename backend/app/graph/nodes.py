@@ -1,9 +1,9 @@
-from datetime import date
 from typing import Any
 from uuid import UUID
 
 from langgraph.types import interrupt
 
+from app.core.timeutil import business_today
 from app.agents import data_collector, health_tracking, intervention, plan, report, risk_assessment, supervisor
 from app.agents.emergency_response import render_emergency
 from app.agents.emergency_router import get_router
@@ -159,7 +159,7 @@ async def plan_node(state: HealthState, deps: GraphDeps) -> dict[str, Any]:
     draft = plan.build(
         state.get("recommendations", []),
         duration,
-        start_date=date.today(),
+        start_date=business_today(),
         goal=state.get("validation_result", {}).get("goal"),
         change_reason=reason,
     )
@@ -301,7 +301,7 @@ async def adjust_node(state: HealthState, deps: GraphDeps) -> dict[str, Any]:
     draft = plan.build(
         recommendations,
         int(state.get("plan_duration_days", 14)),
-        start_date=date.today(),
+        start_date=business_today(),
         change_reason=_last_text(state)[:120] or "用户要求调整",
     )
     return {

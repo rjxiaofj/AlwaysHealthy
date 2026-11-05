@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import { consentApi, profileApi, reportApi } from '@/api'
 import { tokens } from '@/api/client'
 import type { ConsentRecord, EmergencyEvent, ExtractedDocument, FileItem, Profile, ReportSummary } from '@/api/types'
 import { useToastStore } from '@/stores/toast'
-import { buildProfilePatch, formFromProfile } from '@/views/profileLogic'
+import { ageSource, buildProfilePatch, formFromProfile } from '@/views/profileLogic'
 
 const toast = useToastStore()
 const profile = ref<Profile | null>(null)
@@ -20,6 +20,7 @@ const extracted = ref<ExtractedDocument | null>(null)
 const extracting = ref('')
 const selectedCodes = ref<string[]>([])
 const applying = ref(false)
+const ageInfo = computed(() => (profile.value ? ageSource(profile.value) : { text: '', hint: '' }))
 
 const consentOptions = [
   { type: 'health_data', label: '健康数据处理', desc: '保存并使用健康档案与指标记录生成评估' },
@@ -236,6 +237,9 @@ onMounted(load)
           <div>
             <label class="label" for="birth">出生日期</label>
             <input id="birth" v-model="form.birth_date" class="field" type="date" />
+            <p v-if="profile" class="mt-1 text-[11px] leading-relaxed" :style="{ color: 'var(--color-text-tertiary)' }">
+              <template v-if="ageInfo.text">{{ ageInfo.text }} · </template>{{ ageInfo.hint }}
+            </p>
           </div>
           <div>
             <label class="label" for="sex">性别</label>

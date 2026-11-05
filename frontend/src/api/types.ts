@@ -43,6 +43,7 @@ export interface Profile {
   id: string
   birth_date: string | null
   age: number | null
+  age_years: number | null
   sex: string | null
   height_cm: number | null
   weight_kg: number | null

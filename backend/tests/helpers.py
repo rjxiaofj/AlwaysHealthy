@@ -7,6 +7,8 @@ SSE 解析和三步确认散落在多个文件里各写一份。
 import json
 from datetime import date
 
+from app.core.timeutil import business_today
+
 # 覆盖血压、血糖、体重、运动、久坐、睡眠、饮食、吸烟多个维度，
 # 改动这段文本会让多数用例的风险等级断言失效
 ASSESS_TEXT = (
@@ -111,7 +113,7 @@ def today_task_id(plan_detail):
 
     计划按 start_date 生成任务，start_date 默认当天，所以当天一定有任务。
     """
-    today = date.today().isoformat()
+    today = business_today().isoformat()
     return next(item["id"] for item in plan_detail["tasks"] if item["scheduled_date"] == today)
 
 

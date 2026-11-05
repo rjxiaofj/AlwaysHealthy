@@ -9,6 +9,7 @@ import TrendChart from '@/components/TrendChart.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useReminderStore } from '@/stores/reminders'
 import { useToastStore } from '@/stores/toast'
+import { localToday } from '@/utils/datetime'
 
 const auth = useAuthStore()
 const toast = useToastStore()
@@ -33,7 +34,7 @@ const selectedTrend = computed(() => trends.value.find((item) => item.metric_cod
 const unreadThree = computed(() => reminderStore.items.filter((item) => !item.read_at).slice(0, 3))
 const todayTasks = computed(() => {
   if (!plan.value) return []
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localToday()
   return plan.value.tasks.filter((task) => task.scheduled_date === today)
 })
 

@@ -456,6 +456,29 @@
 
 旧用例 `test_nh_03` 开头先写身高 175 体重 88（BMI 28.7）再断言「信息不足」，它一直是绿的，因为那次写入根本没落库。修好提交后 BMI 被正确算成「高」，用例才红。现在改成不预写档案，断言空档案下是信息不足。
 
+## 2026-11-05 业务日期按东八区
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| TZ-01 | `2026-11-04T17:30Z`，即东八区 11-05 01:30 | 业务日期是 11-05 | 改动前前后端都用 UTC 日期，得到 11-04 | DashboardView 今日任务、PlansView today、后端 14 处 `date.today()` |
+| TZ-02 | 东八区 23:30 | 仍是当天，不跳到明天 | 符合 | 无 |
+| TZ-03 | 不带时区的 naive datetime（sqlite 取回） | 按 UTC 解释，不当本地时间再 +8 | 符合 | 无 |
+| TZ-04 | 东五区 `2026-11-05T09:00-05:00` | 换算后是东八区 22:00，仍 11-05 | 符合 | 无 |
+| TZ-05 | 前端清空测量时间后提交 | 提示「选择测量时间」 | 改动前 `new Date('').toISOString()` 抛 RangeError，提示里是英文 Invalid time value | TrendsView.submit |
+| TZ-06 | 跑在 UTC 的 CI 上跑时区用例 | 仍然证明走东八区 | 用例显式传 +8 偏移，不依赖机器时区 | 无 |
+
+`toISOString()` 是 UTC，`date.today()` 在容器里也是 UTC，两者在凌晨 0 点到 8 点都落后一天。受影响的是今日任务列表、距结束天数、改期最小日期、打卡日期、每日任务提醒。后端换成 `business_today()`（固定 +8，不依赖 tzdata），前端加 `utils/datetime.ts`，测试里 23 处同步换口径。`pytest` 172 项通过。
+
+## 2026-11-05 档案年龄来源
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| AG-01 | 档案无年龄无生日 | 只提示填生日 | 符合 | 无 |
+| AG-02 | 有生日 | 显示年龄并注明按生日算 | 符合 | 无 |
+| AG-03 | 只有对话里报的年龄（`birth_date` 为空） | 也要显示，并提示补生日 | 改动前表单只编辑 `birth_date`，这个年龄在个人中心完全看不到 | ProfileView 基础信息 |
+
+`get_profile` 返回的 `age` 是 `age_of(birth_date) or age_years`，两条来源合成一个值，前端靠 `birth_date` 有没有值判断来源即可，不需要后端加字段。没有开放「直接编辑年龄」的入口，避免生日与年龄两个来源打架。
+
 ## 已知取舍
 
 1. 知识检索默认走关键词通道。BGE-M3 与 Chroma 的代码保留在 `app/integrations/chroma_client.py`，需要安装 torch 与 chromadb 并下载模型权重后把 `EMBEDDING_BACKEND` 切到 bge。两套索引独立，不混用向量。
@@ -476,4 +499,5 @@
 7. `~/.docker/daemon.json` 里加的 `registry-mirrors` 已被 Docker Desktop 覆盖回默认，现在文件里只剩 `builder` 与 `experimental`，`docker info` 没有 Mirrors 项。镜像是本地构建，拉取不受影响，换机部署前要在 Docker Desktop 设置里重新加。
 8. 资料解析的规则按常见检验单写法覆盖，手头没有真实报告样本。真实排版的字段名变体、跨页表格、竖排文字都还没验过，拿到样本后要补规则与用例。
 9. 容器实库上跑 `alembic check` 会报 LangGraph checkpointer 的四张表（`checkpoints`、`checkpoint_writes`、`checkpoint_blobs`、`checkpoint_migrations`）是「待删除」，因为这几张表由 checkpointer 自己建、不在模型里。这是噪音，不是漏迁移。空库上跑 check 才是可比对的信号。
-10. 前端测试覆盖 `api/client.ts`、`stores/reminders.ts`、`views/planLogic.ts`，组件本身仍然没有渲染测试，也没配覆盖率阈值。判定与请求体拼装这类分支已经抽成纯函数并覆盖；组件最依赖真实接口形状，单测收益低于接口契约测试，留到接口稳定后再补。
+10. 前端测试覆盖 `api/client.ts`、`stores/reminders.ts`、`views/planLogic.ts`、`views/profileLogic.ts`、`utils/datetime.ts`，组件本身仍然没有渲染测试，也没配覆盖率阈值。判定与请求体拼装这类分支已经抽成纯函数并覆盖；组件最依赖真实接口形状，单测收益低于接口契约测试，留到接口稳定后再补。
+11. 业务日期固定在东八区（`BUSINESS_TZ`），非东八区用户看到的「今天」会是东八区的今天。急救电话默认 120、文案中文，这个假设与产品定位一致；真要支持其他时区得把偏移做成配置项。

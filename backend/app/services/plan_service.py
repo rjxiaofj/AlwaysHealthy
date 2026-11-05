@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import business_today
 from app.core.exceptions import Conflict, IllegalPlan, InvalidHealthData, NotFound
 from app.db.models import (
     HealthPlan,
@@ -230,7 +231,7 @@ async def shift(
     if plan.status not in ("active", "pending_review"):
         raise Conflict("当前计划状态不允许改期")
 
-    today = date.today()
+    today = business_today()
     if new_start < today:
         raise InvalidHealthData("新的开始日期不能早于今天")
     if plan.start_date < today:
@@ -354,7 +355,7 @@ async def checkin(session: AsyncSession, user_id: UUID, task_id: UUID, payload) 
     if plan is None or plan.status != "active" or plan.current_version_id != task.plan_version_id:
         raise Conflict("计划未生效或该任务属于历史版本，不能打卡")
 
-    checkin_date = payload.checkin_date or date.today()
+    checkin_date = payload.checkin_date or business_today()
     if not plan.start_date <= checkin_date <= plan.end_date:
         raise IllegalPlan("打卡日期不在计划周期内")
 
@@ -390,7 +391,7 @@ async def patch_task(session: AsyncSession, user_id: UUID, task_id: UUID, payloa
             raise Conflict("旧版本任务不能再调整，请到当前版本操作")
         if plan.status not in ("active", "pending_review"):
             raise Conflict("当前计划状态不允许调整任务")
-        if payload.scheduled_date < date.today():
+        if payload.scheduled_date < business_today():
             raise InvalidHealthData("不能把任务改到已经过去的日期")
         if not plan.start_date <= payload.scheduled_date <= plan.end_date:
             raise InvalidHealthData("任务日期要落在计划周期内")
@@ -424,7 +425,7 @@ async def close_expired(session: AsyncSession, user_id: UUID) -> None:
         select(HealthPlan).where(
             HealthPlan.user_id == user_id,
             HealthPlan.status == "active",
-            HealthPlan.end_date < date.today(),
+            HealthPlan.end_date < business_today(),
         )
     )
     changed = False

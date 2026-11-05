@@ -1,9 +1,9 @@
-from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import business_today
 from app.agents import plan as plan_agent
 from app.api.deps import current_user, db_session
 from app.core.exceptions import Conflict, IllegalPlan
@@ -40,7 +40,7 @@ async def generate_plan(
     draft = plan_agent.build(
         latest["recommendations"],
         payload.duration_days,
-        start_date=payload.start_date or date.today(),
+        start_date=payload.start_date or business_today(),
         goal=payload.goal,
     )
     validation = plan_validator.validate(draft)

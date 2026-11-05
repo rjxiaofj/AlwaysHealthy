@@ -2,6 +2,8 @@ from datetime import date, timedelta
 
 from tests.helpers import activate_plan, today_task_id
 
+from app.core.timeutil import business_today
+
 
 async def patch_date(client, headers, task_id, scheduled_date):
     return await client.patch(
@@ -14,7 +16,7 @@ async def patch_date(client, headers, task_id, scheduled_date):
 async def test_reschedule_moves_task(client, auth) -> None:
     plan = await activate_plan(client, auth)
     task_id = today_task_id(plan)
-    target = date.today() + timedelta(days=1)
+    target = business_today() + timedelta(days=1)
 
     response = await patch_date(client, auth, task_id, target)
     assert response.status_code == 200, response.text
@@ -29,16 +31,16 @@ async def test_reschedule_same_date_is_noop(client, auth) -> None:
     plan = await activate_plan(client, auth)
     task_id = today_task_id(plan)
 
-    response = await patch_date(client, auth, task_id, date.today())
+    response = await patch_date(client, auth, task_id, business_today())
     assert response.status_code == 200
-    assert response.json()["data"]["scheduled_date"] == date.today().isoformat()
+    assert response.json()["data"]["scheduled_date"] == business_today().isoformat()
 
 
 async def test_reschedule_rejects_past_date(client, auth) -> None:
     plan = await activate_plan(client, auth)
     task_id = today_task_id(plan)
 
-    response = await patch_date(client, auth, task_id, date.today() - timedelta(days=1))
+    response = await patch_date(client, auth, task_id, business_today() - timedelta(days=1))
     assert response.status_code == 422
     assert response.json()["code"] == "INVALID_HEALTH_DATA"
 
@@ -60,7 +62,7 @@ async def test_reschedule_rejects_task_with_checkin(client, auth) -> None:
     checkin = await client.post(f"/api/v1/tasks/{task_id}/checkins", json={"status": "completed"}, headers=auth)
     assert checkin.status_code == 200, checkin.text
 
-    response = await patch_date(client, auth, task_id, date.today() + timedelta(days=1))
+    response = await patch_date(client, auth, task_id, business_today() + timedelta(days=1))
     assert response.status_code == 409
     assert "打卡" in response.json()["message"]
 
@@ -71,12 +73,12 @@ async def test_reschedule_rejects_task_of_old_version(client, auth) -> None:
 
     shifted = await client.post(
         f"/api/v1/plans/{plan['id']}/shift",
-        json={"start_date": (date.today() + timedelta(days=2)).isoformat()},
+        json={"start_date": (business_today() + timedelta(days=2)).isoformat()},
         headers=auth,
     )
     assert shifted.status_code == 200, shifted.text
 
-    response = await patch_date(client, auth, old_task_id, date.today() + timedelta(days=3))
+    response = await patch_date(client, auth, old_task_id, business_today() + timedelta(days=3))
     assert response.status_code == 409
     assert "旧版本" in response.json()["message"]
 
@@ -88,7 +90,7 @@ async def test_reschedule_other_user_task_not_found(client, auth) -> None:
     other = await client.post("/api/v1/auth/register", json={"username": "taskmover", "password": "demo12345"})
     other_headers = {"Authorization": f"Bearer {other.json()['data']['access_token']}"}
 
-    response = await patch_date(client, other_headers, task_id, date.today() + timedelta(days=1))
+    response = await patch_date(client, other_headers, task_id, business_today() + timedelta(days=1))
     assert response.status_code == 404
 
 

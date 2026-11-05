@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from uuid import UUID
 
+from app.core.timeutil import business_today
 from app.db.models import HealthPlan
 from tests.helpers import activate_plan, today_task_id
 
@@ -29,8 +30,8 @@ async def test_cancel_completed_plan_rejected(client, auth, session) -> None:
     plan = await activate_plan(client, auth)
 
     row = await session.get(HealthPlan, UUID(plan["id"]))
-    row.start_date = date.today() - timedelta(days=14)
-    row.end_date = date.today() - timedelta(days=1)
+    row.start_date = business_today() - timedelta(days=14)
+    row.end_date = business_today() - timedelta(days=1)
     await session.commit()
 
     # 结束日期已过，列表会把计划置为 completed

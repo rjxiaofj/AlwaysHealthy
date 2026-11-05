@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildProfilePatch, formFromProfile } from '@/views/profileLogic'
+import { ageSource, buildProfilePatch, formFromProfile } from '@/views/profileLogic'
 import type { ProfileForm } from '@/views/profileLogic'
 
 function form(overrides: Partial<ProfileForm> = {}): ProfileForm {
@@ -138,5 +138,29 @@ describe('回填表单', () => {
         drinking_frequency: null,
       },
     })
+  })
+})
+
+describe('年龄的来源提示', () => {
+  it('没有年龄时只提示填生日', () => {
+    const info = ageSource({ birth_date: null, age: null })
+
+    expect(info.text).toBe('')
+    expect(info.hint).toContain('填写出生日期')
+  })
+
+  it('有生日时说明按生日计算', () => {
+    const info = ageSource({ birth_date: '1990-05-01', age: 36 })
+
+    expect(info.text).toBe('36 岁')
+    expect(info.hint).toBe('按出生日期计算')
+  })
+
+  it('只有对话里报的年龄时也要显示出来，并提示可以补生日', () => {
+    const info = ageSource({ birth_date: null, age: 38 })
+
+    expect(info.text).toBe('38 岁')
+    expect(info.hint).toContain('对话')
+    expect(info.hint).toContain('出生日期')
   })
 })

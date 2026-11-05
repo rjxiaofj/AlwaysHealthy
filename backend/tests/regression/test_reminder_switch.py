@@ -4,6 +4,7 @@ from datetime import date
 
 from sqlalchemy import delete, select
 
+from app.core.timeutil import business_today
 from app.db.models import Notification, User
 from tests.helpers import activate_plan, today_task_id
 
@@ -31,7 +32,7 @@ async def clear_task_due(session, username: str) -> None:
 async def test_task_reminder_follows_switch(client, session) -> None:
     headers, username = await fresh_user(client, "rem")
     plan = await activate_plan(client, headers)
-    today = date.today().isoformat()
+    today = business_today().isoformat()
     today_tasks = [item for item in plan["tasks"] if item["scheduled_date"] == today]
     assert today_tasks
     assert all(item["reminder_enabled"] for item in today_tasks)
@@ -73,7 +74,7 @@ async def test_patch_task_sets_time(client, auth) -> None:
 async def test_checkin_marks_only_its_own_reminder_read(client) -> None:
     headers, _ = await fresh_user(client, "chk")
     plan = await activate_plan(client, headers)
-    today = date.today().isoformat()
+    today = business_today().isoformat()
     today_tasks = [item for item in plan["tasks"] if item["scheduled_date"] == today]
     assert len(today_tasks) > 1
 
@@ -123,7 +124,7 @@ async def test_sync_does_not_touch_other_user_reminder(client, session) -> None:
 async def test_parallel_reminder_requests_stay_clean(client) -> None:
     headers, _ = await fresh_user(client, "par")
     plan = await activate_plan(client, headers)
-    today = date.today().isoformat()
+    today = business_today().isoformat()
     today_tasks = [item for item in plan["tasks"] if item["scheduled_date"] == today]
 
     first, second = await asyncio.gather(

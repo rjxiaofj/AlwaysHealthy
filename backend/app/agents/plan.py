@@ -1,6 +1,8 @@
 from datetime import date, timedelta
 from typing import Any
 
+from app.core.timeutil import business_today
+
 TASK_TEMPLATES: dict[str, list[dict[str, Any]]] = {
     "cardiovascular": [
         {
@@ -122,7 +124,7 @@ def build(
     goal: str | None = None,
     change_reason: str = "首次生成",
 ) -> dict[str, Any]:
-    start = start_date or date.today()
+    start = start_date or business_today()
     end = start + timedelta(days=duration_days - 1)
 
     dimensions: list[str] = []

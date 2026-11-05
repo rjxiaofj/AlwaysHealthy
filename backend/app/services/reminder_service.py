@@ -1,9 +1,10 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import business_today
 from app.db.models import Notification
 from app.repositories import chat as chat_repo
 from app.repositories import plan as plan_repo
@@ -16,7 +17,7 @@ async def sync(session: AsyncSession, user_id: UUID) -> None:
     if plan is None or plan.current_version_id is None:
         return
 
-    today = date.today()
+    today = business_today()
     tasks = await plan_repo.tasks_of(session, plan.current_version_id, today, today)
     checkins = await plan_repo.checkins_between(session, user_id, today, today)
     checked = {item.task_id for item in checkins}

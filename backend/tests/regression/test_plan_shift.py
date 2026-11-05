@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from uuid import UUID
 
+from app.core.timeutil import business_today
 from app.db.models import HealthPlan
 from tests.helpers import activate_plan, today_task_id
 
@@ -48,7 +49,7 @@ async def test_shift_keeps_task_count_and_supersedes_old_version(client, auth) -
 
 async def test_shift_rejects_past_date(client, auth) -> None:
     plan = await activate_plan(client, auth)
-    response = await shift(client, auth, plan["id"], date.today() - timedelta(days=1))
+    response = await shift(client, auth, plan["id"], business_today() - timedelta(days=1))
     assert response.status_code == 422
     assert response.json()["code"] == "INVALID_HEALTH_DATA"
 
@@ -63,10 +64,10 @@ async def test_shift_rejects_started_plan(client, auth, session) -> None:
     plan = await activate_plan(client, auth)
 
     row = await session.get(HealthPlan, UUID(plan["id"]))
-    row.start_date = date.today() - timedelta(days=2)
+    row.start_date = business_today() - timedelta(days=2)
     await session.commit()
 
-    response = await shift(client, auth, plan["id"], date.today() + timedelta(days=5))
+    response = await shift(client, auth, plan["id"], business_today() + timedelta(days=5))
     assert response.status_code == 409
     assert "已经开始" in response.json()["message"]
 
@@ -93,5 +94,5 @@ async def test_shift_other_user_plan_not_found(client, auth) -> None:
     other = await client.post("/api/v1/auth/register", json={"username": "shifttaker", "password": "demo12345"})
     other_headers = {"Authorization": f"Bearer {other.json()['data']['access_token']}"}
 
-    response = await shift(client, other_headers, plan["id"], date.today() + timedelta(days=3))
+    response = await shift(client, other_headers, plan["id"], business_today() + timedelta(days=3))
     assert response.status_code == 404

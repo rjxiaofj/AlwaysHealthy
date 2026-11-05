@@ -23,6 +23,13 @@
 - 空保存不递增 `profile_version`。版本是历史评估快照的锚点，只在真的改了字段时才加一。
 - 前端 `buildProfilePatch` 与后端 `patch_profile` 是同一套语义的两半，改一侧必须同时改另一侧，否则出现「点了没反应」或「清不掉的字段」。
 
+## 业务日期
+
+- 判断「今天」一律走 `app/core/timeutil.py` 的 `business_today()`，不要用 `date.today()`。容器默认 UTC，东八区凌晨 0 点到 8 点这段时间两者差一天：任务提醒生成给前一天、打卡日期落到前一天、当日任务列表为空。
+- 前端对应用 `src/utils/datetime.ts` 的 `localToday()` 与 `localDateTimeInput()`，不要用 `toISOString().slice(0, 10)`，那是 UTC 日期。
+- 固定偏移 +8，不用 `ZoneInfo("Asia/Shanghai")`。中国没有夏令时，且 `python:3.13-slim` 不保证装 tzdata，缺了会静默退回 UTC。
+- 时间戳仍存 UTC（`TIMESTAMPTZ`），只有「算哪一天」这件事按业务时区走。
+
 ## 指标来源与质量
 
 - `health_metric_records.source_type` 区分 manual、wearable 等来源，`measurement_context` 只记设备类型与来源。

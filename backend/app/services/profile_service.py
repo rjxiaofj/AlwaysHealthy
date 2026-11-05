@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import business_today
 from app.db.models import HealthProfile, MedicalHistory
 from app.repositories import health as repo
 from app.schemas.health import MedicalHistoryOut, ProfileOut, ProfilePatch
@@ -22,7 +23,7 @@ HISTORY_CODES = {
 def age_of(birth_date: date | None) -> int | None:
     if not birth_date:
         return None
-    today = date.today()
+    today = business_today()
     return today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
 
 
@@ -75,6 +76,10 @@ async def patch_profile(session: AsyncSession, user_id: UUID, data: ProfilePatch
         else:
             setattr(profile, field, value)
             touched = True
+    if profile.birth_date is not None and profile.age_years is not None:
+        # 生日是更强的事实。留着对话里报的年龄，用户以后清空生日就会回退成几年前的岁数
+        profile.age_years = None
+        touched = True
     if touched:
         # 档案版本是历史评估快照的锚点，任何字段变动都要递增
         profile.profile_version = (profile.profile_version or 1) + 1
@@ -106,6 +111,7 @@ async def get_profile(session: AsyncSession, user_id: UUID) -> ProfileOut:
         id=profile.id,
         birth_date=profile.birth_date,
         age=age_of(profile.birth_date) or profile.age_years,
+        age_years=profile.age_years,
         sex=profile.sex,
         height_cm=_f(profile.height_cm),
         weight_kg=_f(profile.weight_kg),

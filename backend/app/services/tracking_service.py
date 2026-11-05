@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import business_today
 from app.agents.report import build_tracking_report
 from app.core.exceptions import Conflict, InvalidHealthData, NotFound
 from app.core.logging import get_logger
@@ -72,7 +73,7 @@ async def list_metrics(
 
 async def list_feedback(session: AsyncSession, user_id: UUID, days: int = 30) -> list[dict[str, Any]]:
     """身体感受按时间倒序返回。感受只描述主观状态，不换算成指标。"""
-    today = date.today()
+    today = business_today()
     rows = await plan_repo.feedbacks_between(session, user_id, today - timedelta(days=days), today)
     return [
         {
@@ -135,7 +136,7 @@ async def summary(session: AsyncSession, user_id: UUID, plan_id: UUID) -> dict[s
     if plan is None:
         raise NotFound("计划不存在")
 
-    today = date.today()
+    today = business_today()
     period_end = min(today, plan.end_date)
     tasks = await plan_repo.tasks_of(session, plan.current_version_id) if plan.current_version_id else []
     period_tasks: list[PlanTask] = [task for task in tasks if task.scheduled_date <= period_end]
@@ -187,7 +188,7 @@ async def generate_report(session: AsyncSession, user_id: UUID, plan_id: UUID) -
     if plan.status not in ("active", "completed"):
         raise Conflict("当前计划状态不能生成周期报告")
 
-    today = date.today()
+    today = business_today()
     if plan.end_date > today:
         raise Conflict(f"周期到 {plan.end_date} 才结束，现在出报告统计不完整")
 
@@ -234,7 +235,7 @@ async def today_tasks(session: AsyncSession, user_id: UUID) -> list[dict[str, An
     plan = await plan_repo.active_plan(session, user_id)
     if plan is None or plan.current_version_id is None:
         return []
-    today = date.today()
+    today = business_today()
     tasks = await plan_repo.tasks_of(session, plan.current_version_id, today, today)
     checkins = await plan_repo.checkins_between(session, user_id, today, today)
     status_map = {item.task_id: item.status for item in checkins}

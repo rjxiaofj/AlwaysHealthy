@@ -69,3 +69,21 @@ export function formFromProfile(profile: {
     drinking_frequency: text(lifestyle.drinking_frequency),
   }
 }
+
+export interface AgeSource {
+  text: string
+  hint: string
+}
+
+// 后端把「按生日算」与「对话里报的年龄」合成同一个 age，前端靠 birth_date 有没有值判断来源。
+// 聊天里只说了年龄时 age_years 有值而 birth_date 为空，表单原来完全看不到这个年龄
+export function ageSource(profile: { birth_date: string | null; age: number | null }): AgeSource {
+  if (profile.age === null || profile.age === undefined) {
+    return { text: '', hint: '填写出生日期后自动计算年龄' }
+  }
+  const text = `${profile.age} 岁`
+  if (profile.birth_date) {
+    return { text, hint: '按出生日期计算' }
+  }
+  return { text, hint: '来自对话中提到的年龄，补充出生日期可以更精确' }
+}

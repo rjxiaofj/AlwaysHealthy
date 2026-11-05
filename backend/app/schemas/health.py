@@ -71,6 +71,8 @@ class ProfileOut(BaseModel):
     id: UUID
     birth_date: date | None
     age: int | None
+    # 只在对话里报到年龄时写这一列，birth_date 仍留空。前端据它提示「补一下生日」
+    age_years: int | None = None
     sex: str | None
     height_cm: float | None
     weight_kg: float | None

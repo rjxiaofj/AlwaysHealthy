@@ -6,6 +6,7 @@ import { assessmentApi, planApi, reportApi, trackingApi } from '@/api'
 import type { Plan, PlanSummary, Task, TrackingSummary } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
 import { useToastStore } from '@/stores/toast'
+import { localToday } from '@/utils/datetime'
 import {
   buildTaskPatch,
   canCancelPlan,
@@ -40,7 +41,7 @@ const reassessReason = ref('')
 const reassessing = ref(false)
 const reporting = ref(false)
 
-const today = new Date().toISOString().slice(0, 10)
+const today = localToday()
 
 const grouped = computed(() => (selected.value ? groupTasksByDate(selected.value.tasks) : []))
 
