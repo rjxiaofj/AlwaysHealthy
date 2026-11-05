@@ -6,7 +6,7 @@ import { assessmentApi, planApi, reportApi, trackingApi } from '@/api'
 import type { Plan, PlanSummary, Task, TrackingSummary } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
 import { useToastStore } from '@/stores/toast'
-import { localToday } from '@/utils/datetime'
+import { useToday } from '@/utils/today'
 import {
   buildTaskPatch,
   canCancelPlan,
@@ -41,7 +41,7 @@ const reassessReason = ref('')
 const reassessing = ref(false)
 const reporting = ref(false)
 
-const today = localToday()
+const today = useToday()
 
 const grouped = computed(() => (selected.value ? groupTasksByDate(selected.value.tasks) : []))
 
@@ -58,12 +58,12 @@ const canCheckin = computed(() => canCheckinPlan(selected.value))
 
 const canCancel = computed(() => canCancelPlan(selected.value))
 
-const canShift = computed(() => canShiftPlan(selected.value, today))
+const canShift = computed(() => canShiftPlan(selected.value, today.value))
 
 const daysLeft = computed(() => {
   const plan = selected.value
   if (!plan) return 0
-  return daysUntil(plan.end_date, today)
+  return daysUntil(plan.end_date, today.value)
 })
 
 const canReassess = computed(() => canReassessPlan(selected.value, daysLeft.value))
