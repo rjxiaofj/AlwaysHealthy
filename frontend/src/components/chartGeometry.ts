@@ -10,11 +10,26 @@ export interface ChartPointInput {
   value: number
 }
 
+/** 多序列对比里的一条线。key 用于稳定 key 与图例区分，color 由组件按顺序分配。 */
+export interface ChartSeriesInput {
+  key: string
+  label: string
+  points: ChartPointInput[]
+}
+
 export interface ChartPointLayout {
   x: number
   y: number
   value: number
   label: string
+}
+
+export interface ChartSeriesLayout {
+  key: string
+  label: string
+  points: ChartPointLayout[]
+  line: string
+  area: string
 }
 
 export interface ChartTick {
@@ -37,6 +52,16 @@ export interface ChartLayout {
   line: string
   /** 折线 + 落到底边的闭合路径，用来填渐变 */
   area: string
+  baseline: number
+  yTicks: ChartYAxisTick[]
+  xTicks: ChartTick[]
+}
+
+/** 多序列对比布局。Y 轴按所有序列的全局 min/max 统一缩放，各序列独立铺满横轴。 */
+export interface MultiChartLayout {
+  width: number
+  height: number
+  series: ChartSeriesLayout[]
   baseline: number
   yTicks: ChartYAxisTick[]
   xTicks: ChartTick[]
@@ -257,4 +282,69 @@ export function nearestIndex(points: readonly { x: number }[], targetX: number):
     }
   }
   return best
+}
+
+/**
+ * 多指标同图对比的几何计算。
+ *
+ * 跟单序列不同：这里各条线的值域可能差很远（收缩压 130 vs 体重 75），所以 Y 轴按
+ * 所有序列的全局 min/max 统一缩放——这样同量纲的「收缩压 vs 舒张压」能直接看谁高谁
+ * 低、趋势是否同步。横轴各序列独立铺满，不做日期对齐：多指标通常同时测，点数接近，
+ * 对齐的复杂度不值当；点数不同时仍能比趋势方向。
+ */
+export function buildMultiChart(
+  seriesInput: readonly ChartSeriesInput[],
+  size: { width: number; height: number },
+): MultiChartLayout {
+  const width = Math.max(0, size.width)
+  const height = Math.max(0, size.height)
+  const empty: MultiChartLayout = { width, height, series: [], baseline: 0, yTicks: [], xTicks: [] }
+
+  const series = seriesInput
+    .map((item) => ({
+      ...item,
+      points: item.points.filter((point) => Number.isFinite(point.value)),
+    }))
+    .filter((item) => item.points.length > 0)
+
+  if (!series.length || width <= PADDING.left + PADDING.right || height <= PADDING.top + PADDING.bottom) {
+    return empty
+  }
+
+  const plotLeft = PADDING.left
+  const plotRight = width - PADDING.right
+  const plotTop = PADDING.top
+  const plotBottom = height - PADDING.bottom
+  const plotWidth = plotRight - plotLeft
+  const plotHeight = plotBottom - plotTop
+
+  // 全局值域：所有序列一起决定 Y 轴，保证同量纲下能直接比高低
+  const allValues = series.flatMap((item) => item.points.map((point) => point.value))
+  const domain = niceDomain(Math.min(...allValues), Math.max(...allValues))
+  const span = domain.max - domain.min || 1
+  const toY = (value: number) => plotBottom - ((value - domain.min) / span) * plotHeight
+
+  const laidOut = series.map((item) => {
+    const count = item.points.length
+    const step = count === 1 ? 0 : plotWidth / (count - 1)
+    const points: ChartPointLayout[] = item.points.map((point, index) => ({
+      x: count === 1 ? plotLeft + plotWidth / 2 : round(plotLeft + index * step),
+      y: round(toY(point.value)),
+      value: point.value,
+      label: formatDay(point.measured_at),
+    }))
+    return { key: item.key, label: item.label, points, line: smoothPath(points), area: '' }
+  })
+
+  // 横轴刻度用点数最多的那条序列，避免因某条序列点太少而空出大半截
+  const densest = laidOut.reduce((best, item) => (item.points.length > best.points.length ? item : best), laidOut[0])
+
+  return {
+    width,
+    height,
+    series: laidOut,
+    baseline: round(plotBottom),
+    yTicks: domain.ticks.map((value) => ({ y: round(toY(value)), text: formatTick(value, domain.step) })),
+    xTicks: buildXTicks(densest.points, plotWidth),
+  }
 }

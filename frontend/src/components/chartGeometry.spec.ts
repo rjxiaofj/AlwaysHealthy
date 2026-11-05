@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildChart, formatTick, nearestIndex, niceDomain } from '@/components/chartGeometry'
+import { buildChart, buildMultiChart, formatTick, nearestIndex, niceDomain } from '@/components/chartGeometry'
 
 const point = (day: string, value: number) => ({ measured_at: `2026-11-${day}T08:00:00`, value })
 
@@ -183,5 +183,79 @@ describe('提示框选点', () => {
 
   it('没有点时返回 null，组件据此不显示提示框', () => {
     expect(nearestIndex([], 100)).toBeNull()
+  })
+})
+
+describe('多序列对比几何', () => {
+  const series = (key: string, label: string, values: number[]) => ({
+    key,
+    label,
+    points: values.map((value, index) => ({ measured_at: `2026-11-${String(index + 1).padStart(2, '0')}T08:00:00`, value })),
+  })
+
+  it('空序列或全空值时返回空布局', () => {
+    expect(buildMultiChart([], { width: 600, height: 260 }).series).toEqual([])
+    expect(buildMultiChart([series('a', 'A', [Number.NaN])], { width: 600, height: 260 }).series).toEqual([])
+  })
+
+  it('过滤掉没有有效点的序列，保留有数据的', () => {
+    const layout = buildMultiChart(
+      [series('empty', '空', [Number.NaN]), series('ok', '有', [120, 122])],
+      { width: 600, height: 260 },
+    )
+
+    expect(layout.series.map((item) => item.key)).toEqual(['ok'])
+  })
+
+  it('Y 轴按所有序列的全局值域缩放，同量纲下能直接比高低', () => {
+    const layout = buildMultiChart(
+      [series('sys', '收缩压', [120, 130, 125]), series('dia', '舒张压', [80, 85, 82])],
+      { width: 600, height: 260 },
+    )
+
+    // 收缩压 130 是所有值里最大的，应该画得最高（y 最小）
+    const sysMax = layout.series[0].points[1]
+    const diaMax = layout.series[1].points[1]
+    expect(sysMax.y).toBeLessThan(diaMax.y)
+    // 刻度包住所有值
+    const ticks = layout.yTicks.map((tick) => Number(tick.text))
+    expect(Math.min(...ticks)).toBeLessThanOrEqual(80)
+    expect(Math.max(...ticks)).toBeGreaterThanOrEqual(130)
+  })
+
+  it('每条序列各自铺满横轴，首尾点在画布两端', () => {
+    const layout = buildMultiChart(
+      [series('a', 'A', [1, 2, 3]), series('b', 'B', [5, 6])],
+      { width: 600, height: 260 },
+    )
+
+    for (const item of layout.series) {
+      const first = item.points[0]
+      const last = item.points[item.points.length - 1]
+      expect(first.x).toBeCloseTo(46)
+      expect(last.x).toBeCloseTo(600 - 16)
+    }
+  })
+
+  it('横轴刻度用点数最多的序列，避免空出大半截', () => {
+    const layout = buildMultiChart(
+      [series('sparse', '少', [1, 2]), series('dense', '多', [1, 2, 3, 4, 5])],
+      { width: 600, height: 260 },
+    )
+
+    const lastTick = layout.xTicks[layout.xTicks.length - 1]
+    expect(lastTick.x).toBeCloseTo(layout.series[1].points[4].x)
+  })
+
+  it('不同序列值域差异大时也能正常缩放（不假设同量纲）', () => {
+    const layout = buildMultiChart(
+      [series('bp', '血压', [130, 135]), series('weight', '体重', [70, 71])],
+      { width: 600, height: 260 },
+    )
+
+    // 两条线都有点，体重 70 在全局值域里偏低，画得比血压低
+    const bp = layout.series[0].points[0]
+    const weight = layout.series[1].points[0]
+    expect(bp.y).toBeLessThan(weight.y)
   })
 })

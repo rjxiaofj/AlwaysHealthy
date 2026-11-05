@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue'
 import { trackingApi } from '@/api'
 import type { FeedbackRecord, Trend } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
+import MultiTrendChart from '@/components/MultiTrendChart.vue'
 import TrendChart from '@/components/TrendChart.vue'
 import { useToastStore } from '@/stores/toast'
 import { localDateTimeInput } from '@/utils/datetime'
@@ -24,6 +25,8 @@ const trends = ref<Trend[]>([])
 const active = ref('systolic_bp')
 const days = ref(30)
 const busy = ref(false)
+const compareMode = ref(false)
+const compared = ref<string[]>([])
 
 const form = ref({
   metric_code: 'systolic_bp',
@@ -34,6 +37,17 @@ const form = ref({
 
 const selected = computed(() => trends.value.find((item) => item.metric_code === active.value) || trends.value[0])
 const currentUnit = computed(() => metrics.find((item) => item.code === form.value.metric_code)?.unit || '')
+const comparedSeries = computed(() =>
+  compared.value
+    .map((code) => trends.value.find((item) => item.metric_code === code))
+    .filter((item): item is Trend => Boolean(item)),
+)
+
+function toggleCompare(code: string) {
+  const index = compared.value.indexOf(code)
+  if (index >= 0) compared.value.splice(index, 1)
+  else compared.value.push(code)
+}
 
 const feedback = ref({
   mood_status: '',
@@ -162,21 +176,51 @@ onMounted(load)
          图表下面空出一大块，看着像没渲染完 -->
     <div class="grid items-start gap-4 xl:grid-cols-[1.4fr_0.6fr]">
       <section class="glass card-pad">
-        <div class="mb-3 flex flex-wrap gap-2">
-          <button
-            v-for="item in trends"
-            :key="item.metric_code"
-            class="chip"
-            :class="selected?.metric_code === item.metric_code ? 'level-low' : ''"
-            @click="active = item.metric_code"
-          >
-            {{ item.label }}
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="item in trends"
+              :key="item.metric_code"
+              class="chip"
+              :class="
+                compareMode
+                  ? compared.includes(item.metric_code)
+                    ? 'level-low'
+                    : ''
+                  : selected?.metric_code === item.metric_code
+                    ? 'level-low'
+                    : ''
+              "
+              @click="compareMode ? toggleCompare(item.metric_code) : (active = item.metric_code)"
+            >
+              {{ item.label }}
+            </button>
+          </div>
+          <button class="chip" :class="compareMode ? 'level-low' : ''" @click="compareMode = !compareMode">
+            {{ compareMode ? '对比中' : '对比' }}
           </button>
         </div>
-        <div v-if="selected && selected.points.length">
-          <TrendChart :points="selected.points" :label="selected.label" :unit="selected.unit" />
+
+        <div v-if="compareMode">
+          <MultiTrendChart
+            v-if="comparedSeries.length > 1"
+            :series="comparedSeries.map((item) => ({ key: item.metric_code, label: item.label, unit: item.unit, points: item.points }))"
+          />
+          <EmptyState
+            v-else
+            title="选择至少两个指标"
+            description="点上面的指标标签勾选两个以上，就能在同一张图上对比它们的趋势"
+          />
+          <p v-if="comparedSeries.length > 1" class="mt-2 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+            同一张图里纵轴按所有选中指标的全局范围统一缩放，量纲不同的指标对比高低只作参考。
+          </p>
         </div>
-        <EmptyState v-else title="没有该指标的记录" description="在右侧录入一次测量后会生成曲线" />
+        <template v-else>
+          <div v-if="selected && selected.points.length">
+            <TrendChart :points="selected.points" :label="selected.label" :unit="selected.unit" />
+          </div>
+          <EmptyState v-else title="没有该指标的记录" description="在右侧录入一次测量后会生成曲线" />
+        </template>
 
         <div v-if="selected" class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div>
