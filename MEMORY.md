@@ -257,6 +257,20 @@
 
 原先只有写入没有读取，`feedbacks_between` 定义后零调用。现在 `GET /tracking/feedback` 按天数窗口返回，趋势页底部列出历史，随观察范围刷新。感受不参与风险分级的口径在接口注释与页面文案里都写了。`pytest` 120 项通过。
 
+## 2026-11-05 紧急提示记录
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| V-01 | 该用户两条紧急事件，时间相差一天 | 新的在前 | 符合，第二条是昨天的「胸痛」 | 无 |
+| V-02 | 命中规则是对象数组 | 原样带出 | 符合，`matched_rules[0].rule_id` 可读 | 无 |
+| V-03 | 另一个账号拉列表 | 空列表 | 符合 | 无 |
+| V-04 | 容器 Postgres 上用演示账号拉列表 | 返回真实触发记录 | 符合，8 条，级别都是紧急，`matched_rules` 为 `EM_CHEST_PAIN` 与 `EM_DYSPNEA` | 无 |
+| V-05 | 容器内跑冒烟脚本 | 对话触发紧急提示后能查到这条 | 符合，脚本末行输出 `emergency-events 200 8 紧急` | 无 |
+
+`emergency_events` 建表后只写不读，用户被提示过「立刻就医」却查不到任何记录。现在 `GET /profiles/me/emergency-events` 倒序返回最近 20 条，个人中心列出触发原因、时间与级别，并写明这不代表诊断、不改变当时的处置建议。返回体不带 `conversation_id` 与 `run_id`，避免把其他会话标识暴露到个人页。`pytest` 122 项通过。
+
+顺带改了两处过期文案：个人页底部「演示环境使用模拟数据」与事实不符，改成模型不可用时回落到本地规则文案；`AGENTS.md` 里指向不存在的 `src/api/errors.ts`，改成实际存在的 `src/api/client.ts` 并写明前端不按 `code` 分支。
+
 ## 已知取舍
 
 1. 知识检索默认走关键词通道。BGE-M3 与 Chroma 的代码保留在 `app/integrations/chroma_client.py`，需要安装 torch 与 chromadb 并下载模型权重后把 `EMBEDDING_BACKEND` 切到 bge。两套索引独立，不混用向量。
@@ -273,5 +287,5 @@
 4. BGE-M3 在本机的加载耗时与内存占用未测。向量通道代码已就位，依赖见 `backend/requirements-vector.txt`。
 5. Docker Compose 已在本机实跑，三容器 healthy，冒烟通过，见 C-01 至 C-11。
 6. Postgres 上的 upgrade 与 downgrade 都实测过，一次性库上完成升降循环，见 M-04 至 M-08。
-7. `~/.docker/daemon.json` 里加的 `registry-mirrors` 需要重启引擎才生效，重启后确认 `docker info` 的 Mirrors 是否非空。
+7. `~/.docker/daemon.json` 里加的 `registry-mirrors` 已被 Docker Desktop 覆盖回默认，现在文件里只剩 `builder` 与 `experimental`，`docker info` 没有 Mirrors 项。镜像是本地构建，拉取不受影响，换机部署前要在 Docker Desktop 设置里重新加。
 8. 资料解析的规则按常见检验单写法覆盖，手头没有真实报告样本。真实排版的字段名变体、跨页表格、竖排文字都还没验过，拿到样本后要补规则与用例。

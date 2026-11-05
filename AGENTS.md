@@ -68,7 +68,7 @@
 
 - 所有业务接口前缀 `/api/v1`，健康检查在 `/health/*`。
 - 响应体统一 `{code, message, data, request_id}`，由 `app/core/exceptions.py` 与 `app/core/response.py` 产出。不要另建一套 `{success, result}`。
-- 错误码只用 `app/core/errors.py` 里已定义的枚举，新增错误码要同步前端 `src/api/errors.ts`。
+- 错误码只用 `app/core/errors.py` 里已定义的枚举。前端不按 `code` 分支，统一在 `src/api/client.ts` 抛 `ApiError` 并直接展示后端 `message`，新增错误码时 `message` 必须是能直接给用户看的中文。
 - JWT 只放 Authorization 头。禁止放查询参数，SSE 也一样。
 - `thread_id` 由后端生成并写库，前端只能传 `conversation_id`。
 - 恢复工作流前必须校验 `conversation.user_id == current_user.id`，再校验 `run` 归属。
