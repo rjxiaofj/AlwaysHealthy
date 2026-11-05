@@ -30,3 +30,22 @@
 - 只覆盖了图表这一个组件。聊天页（流式渲染、确认卡片、滚动到底）、计划页（草稿增删）仍然没有渲染测试——它们的逻辑分支已经抽成纯函数（`planLogic.ts`、`profileLogic.ts`），剩下的主要是模板与事件接线，等这两处再改时顺手补。
 - stub 掉 `ResizeObserver` 等于放弃「窗口缩放后重算」这条路径的验证。真验需要真实布局引擎，happy-dom 给不了。
 - 样式没有断言（颜色、间距、玻璃拟态），那些靠截图看。
+
+## 补记：聊天页也补上（同日后续）
+
+上面「取舍」第一条说聊天页没有渲染测试。它的流式细节（切帧、401 续期、空闲/总时长超时）在 `api/stream.spec.ts` 里都验过了，缺的是「事件到了，界面有没有照着变」。补 6 条：
+
+| 编号 | 断言 |
+|---|---|
+| CV-01 | 发送后先把用户这句放上屏，`token` 到达时逐字追加（用 deferred 卡住流，断言中间的渲染状态） |
+| CV-02 | `run_error` 事件 → 弹后端给的文案，且 tone 是 error |
+| CV-03 | `node_progress` 显示在标题栏，流结束时清掉 |
+| CV-04 | 卸载组件时正在跑的流的 `signal.aborted` 变 true |
+| CV-05 | 用户主动取消（`AbortError`）不弹错误提示 |
+| CV-06 | 普通失败（`请求失败 502`）仍然要弹提示——不能把 05 做成「什么都不弹」 |
+
+`@/api` 与 `@/api/stream` 用 `vi.hoisted` + `vi.mock` 整体替掉，不碰真实网络。`happy-dom` 没实现元素滚动，`scrollTo` 打个空桩。
+
+变异两处：去掉 `isAbortError` 过滤，CV-05 挂；删掉 `onBeforeUnmount` 里的 `controller?.abort()`，CV-04 挂。前端 141 → 147 项。
+
+仍然没覆盖：确认卡片的三条分支（approve / modify / reject）走的是 `streamResume`，与 `send` 同一套骨架，暂未单独写；滚动到底部的视觉行为也没法在 happy-dom 里验。
