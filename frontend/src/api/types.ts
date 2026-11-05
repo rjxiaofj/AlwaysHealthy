@@ -147,6 +147,21 @@ export interface PlanAdjustment {
   feedback: string | null
 }
 
+export interface PlanPendingTask {
+  id: string
+  title: string
+  scheduled_date: string
+  scheduled_time: string | null
+  duration_minutes: number | null
+}
+
+export interface PlanPendingVersion {
+  id: string
+  version_no: number
+  change_reason: string | null
+  tasks: PlanPendingTask[]
+}
+
 export interface Plan {
   id: string
   title: string
@@ -158,6 +173,7 @@ export interface Plan {
   assessment_id: string | null
   created_at: string
   adjustment: PlanAdjustment | null
+  pending_version: PlanPendingVersion | null
   tasks: Task[]
   versions: PlanVersion[]
 }

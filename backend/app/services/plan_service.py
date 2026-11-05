@@ -433,6 +433,38 @@ async def close_expired(session: AsyncSession, user_id: UUID) -> None:
         await session.commit()
 
 
+async def remove_draft_task(
+    session: AsyncSession,
+    user_id: UUID,
+    plan_id: UUID,
+    version_id: UUID,
+    task_id: UUID,
+) -> None:
+    """在待确认版本里删掉一条任务。
+
+    调整版本沿用原任务结构，用户说「任务太多」只能靠删。删的是草稿里的新行，
+    原版本任务与打卡都不动，所以不会影响已经完成的记录。
+    """
+    plan = await repo.plan_of(session, user_id, plan_id)
+    if plan is None:
+        raise NotFound("计划不存在")
+    version = await repo.version_of(session, plan.id, version_id)
+    if version is None:
+        raise NotFound("计划版本不存在")
+    if version.status != "draft":
+        raise Conflict("只有待确认的版本可以删任务")
+
+    tasks = await repo.tasks_of(session, version.id)
+    target = next((item for item in tasks if item.id == task_id), None)
+    if target is None:
+        raise NotFound("任务不存在")
+    if len(tasks) <= 1:
+        raise Conflict("至少保留一项任务，否则确认后计划没有内容")
+
+    await session.delete(target)
+    await session.commit()
+
+
 async def _approved_adjustment(session: AsyncSession, plan: HealthPlan) -> PlanAdjustmentRecord | None:
     """当前版本由调整产生且已生效时返回那条记录。改期也会换版本，但改期不写调整记录。"""
     if plan.current_version_id is None:
@@ -484,6 +516,8 @@ async def detail(session: AsyncSession, user_id: UUID, plan_id: UUID) -> dict[st
 
     versions = await repo.versions_of(session, plan.id)
     tasks = await repo.tasks_of(session, plan.current_version_id) if plan.current_version_id else []
+    draft = next((item for item in versions if item.status == "draft"), None)
+    draft_tasks = await repo.tasks_of(session, draft.id) if draft else []
     checkins = await repo.checkins_between(session, user_id, plan.start_date, plan.end_date)
     status_map = {item.task_id: item.status for item in checkins}
     adjustment_record = await _approved_adjustment(session, plan)
@@ -510,6 +544,25 @@ async def detail(session: AsyncSession, user_id: UUID, plan_id: UUID) -> dict[st
         "assessment_id": plan.assessment_id,
         "created_at": plan.created_at,
         "adjustment": adjustment,
+        "pending_version": (
+            {
+                "id": draft.id,
+                "version_no": draft.version_no,
+                "change_reason": draft.change_reason,
+                "tasks": [
+                    {
+                        "id": task.id,
+                        "title": task.title,
+                        "scheduled_date": task.scheduled_date,
+                        "scheduled_time": task.scheduled_time,
+                        "duration_minutes": task.duration_minutes,
+                    }
+                    for task in draft_tasks
+                ],
+            }
+            if draft
+            else None
+        ),
         "tasks": [
             {
                 "id": task.id,

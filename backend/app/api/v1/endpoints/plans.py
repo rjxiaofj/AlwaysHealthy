@@ -95,6 +95,19 @@ async def reject_version(
     return ok(request, await plan_service.detail(session, user.id, plan_id), message)
 
 
+@router.delete("/plans/{plan_id}/versions/{version_id}/tasks/{task_id}")
+async def remove_draft_task(
+    plan_id: UUID,
+    version_id: UUID,
+    task_id: UUID,
+    request: Request,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(db_session),
+):
+    await plan_service.remove_draft_task(session, user.id, plan_id, version_id, task_id)
+    return ok(request, await plan_service.detail(session, user.id, plan_id))
+
+
 @router.post("/plans/{plan_id}/adjust")
 async def adjust_plan(
     plan_id: UUID,

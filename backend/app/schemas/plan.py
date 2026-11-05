@@ -45,6 +45,21 @@ class AdjustmentOut(BaseModel):
     feedback: str | None
 
 
+class PendingTaskOut(BaseModel):
+    id: UUID
+    title: str
+    scheduled_date: date
+    scheduled_time: str | None
+    duration_minutes: int | None
+
+
+class PendingVersionOut(BaseModel):
+    id: UUID
+    version_no: int
+    change_reason: str | None
+    tasks: list[PendingTaskOut] = []
+
+
 class PlanOut(BaseModel):
     id: UUID
     title: str
@@ -56,6 +71,7 @@ class PlanOut(BaseModel):
     assessment_id: UUID | None
     created_at: datetime
     adjustment: AdjustmentOut | None = None
+    pending_version: PendingVersionOut | None = None
     tasks: list[TaskOut] = []
     versions: list[VersionOut] = []
 

@@ -78,6 +78,8 @@ export const planApi = {
     }),
   rejectVersion: (id: string, versionId: string) =>
     api<Plan>(`/plans/${id}/versions/${versionId}/reject`, { body: {} }),
+  removeDraftTask: (id: string, versionId: string, taskId: string) =>
+    api<Plan>(`/plans/${id}/versions/${versionId}/tasks/${taskId}`, { method: 'DELETE' }),
   shift: (id: string, startDate: string, reason?: string) =>
     api<Plan>(`/plans/${id}/shift`, { body: { start_date: startDate, reason } }),
   cancel: (id: string) => api<null>(`/plans/${id}/cancel`, { body: {} }),

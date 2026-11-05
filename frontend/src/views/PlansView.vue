@@ -50,8 +50,8 @@ const activeVersion = computed(() => {
   return selected.value.versions.find((item) => item.id === selected.value?.current_version_id) || null
 })
 
-// 调整产生的草稿不会动 current_version_id，只看它找不到待确认版本
-const pendingVersion = computed(() => selected.value?.versions.find((item) => item.status === 'draft') || null)
+// 调整产生的草稿不会动 current_version_id，待确认版本由后端单独返回
+const pendingVersion = computed(() => selected.value?.pending_version || null)
 
 const canApprove = computed(() => !!pendingVersion.value)
 
@@ -151,6 +151,22 @@ async function rejectPending() {
     await load(plan.id)
   } catch (error) {
     toast.error(error instanceof Error ? error.message : '作废失败')
+  } finally {
+    busy.value = false
+  }
+}
+
+async function removeDraftTask(taskId: string) {
+  const plan = selected.value
+  const version = pendingVersion.value
+  if (!plan || !version) return
+  busy.value = true
+  try {
+    selected.value = await planApi.removeDraftTask(plan.id, version.id, taskId)
+    toast.success('已从待确认版本里删掉')
+    await loadSummary()
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : '删除失败')
   } finally {
     busy.value = false
   }
@@ -389,14 +405,34 @@ onMounted(() => load())
             </div>
           </div>
 
-          <p
+          <div
             v-if="pendingVersion"
-            class="mt-3 rounded-[14px] border px-3 py-2 text-[11px] leading-relaxed"
-            :style="{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }"
+            class="mt-3 rounded-[14px] border px-3 py-2"
+            :style="{ borderColor: 'var(--color-border)' }"
           >
-            待确认 v{{ pendingVersion.version_no }}：{{ pendingVersion.change_reason || '首次生成的计划' }}。
-            确认后任务按这一版执行{{ pendingIsAdjustment ? '，放弃则继续用原来的版本' : '，不接受则计划取消' }}。
-          </p>
+            <p class="text-[11px] leading-relaxed" :style="{ color: 'var(--color-text-secondary)' }">
+              待确认 v{{ pendingVersion.version_no }}：{{ pendingVersion.change_reason || '首次生成的计划' }}。
+              确认后任务按这一版执行{{ pendingIsAdjustment ? '，放弃则继续用原来的版本' : '，不接受则计划取消' }}。
+            </p>
+            <p class="mt-2 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+              这一版共 {{ pendingVersion.tasks.length }} 项任务，觉得多可以逐条删掉再确认
+            </p>
+            <ul class="mt-1 flex flex-col gap-1">
+              <li
+                v-for="item in pendingVersion.tasks.slice(0, 6)"
+                :key="item.id"
+                class="flex items-center justify-between gap-2 text-[11px]"
+              >
+                <span class="truncate">{{ item.scheduled_date }} {{ item.scheduled_time || '' }} {{ item.title }}</span>
+                <button class="btn btn-ghost !px-2 !py-0.5 text-[11px]" :disabled="busy" @click="removeDraftTask(item.id)">
+                  删掉
+                </button>
+              </li>
+            </ul>
+            <p v-if="pendingVersion.tasks.length > 6" class="mt-1 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+              只列出前六项
+            </p>
+          </div>
 
           <div v-if="canCancel" class="mt-4 flex flex-wrap items-end gap-2">
             <div class="min-w-[220px] flex-1">
