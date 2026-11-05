@@ -4,11 +4,28 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.timeutil import business_today
+from app.core.timeutil import business_now, business_today
 from app.db.models import Notification
 from app.repositories import chat as chat_repo
 from app.repositories import plan as plan_repo
 from app.services import tracking_service
+
+
+def _time_passed(scheduled_time: str | None, now) -> bool:
+    """任务没有设定时间，或当前时刻已经过了设定时间，才值得催「待完成」。
+
+    早上六点就把「晚上八点半记录饮食」当成待完成催，既不准也烦人。scheduled_time
+    是 HH:MM 字符串，与 business_now 的东八区时刻比较。
+    """
+    if not scheduled_time:
+        return True
+    try:
+        hour, minute = (int(part) for part in scheduled_time.split(":"))
+    except (ValueError, AttributeError):
+        return True
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return True
+    return now.hour > hour or (now.hour == hour and now.minute >= minute)
 
 
 async def sync(session: AsyncSession, user_id: UUID) -> None:
@@ -18,6 +35,7 @@ async def sync(session: AsyncSession, user_id: UUID) -> None:
         return
 
     today = business_today()
+    now = business_now()
     tasks = await plan_repo.tasks_of(session, plan.current_version_id, today, today)
     checkins = await plan_repo.checkins_between(session, user_id, today, today)
     checked = {item.task_id for item in checkins}
@@ -29,15 +47,19 @@ async def sync(session: AsyncSession, user_id: UUID) -> None:
         # 任务级提醒可以关掉，计划级的两条提醒不受单个开关影响
         if not task.reminder_enabled:
             continue
+        # 还没到设定时间不催：晚上八点半的记录，早上六点不该当作「待完成」顶上来
+        if not _time_passed(task.scheduled_time, now):
+            continue
         key = f"task_due:{task.id}:{today.isoformat()}"
         if await chat_repo.notification_by_dedup(session, key):
             continue
+        time_hint = f"（设定时间 {task.scheduled_time}）" if task.scheduled_time else ""
         created.append(
             Notification(
                 user_id=user_id,
                 notification_type="task_due",
                 title="今日任务待完成",
-                content=f"{task.title}，完成标准：{task.completion_criteria}",
+                content=f"{task.title}{time_hint}，完成标准：{task.completion_criteria}",
                 related_object_id=task.id,
                 dedup_key=key,
             )

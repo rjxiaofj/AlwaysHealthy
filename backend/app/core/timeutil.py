@@ -18,3 +18,8 @@ def to_business_date(moment: datetime) -> date:
 
 def business_today(now: datetime | None = None) -> date:
     return to_business_date(now or datetime.now(UTC))
+
+
+def business_now(now: datetime | None = None) -> datetime:
+    """东八区的当前时刻。拿「现在几点」判断任务是否到点，与 business_today 同口径。"""
+    return as_utc(now or datetime.now(UTC)).astimezone(BUSINESS_TZ)

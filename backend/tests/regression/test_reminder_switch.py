@@ -1,12 +1,27 @@
 import asyncio
 import uuid
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
+import pytest
 from sqlalchemy import delete, select
 
 from app.core.timeutil import business_today
 from app.db.models import Notification, User
 from tests.helpers import activate_plan, today_task_id
+
+
+@pytest.fixture(autouse=True)
+def _freeze_to_late_evening(monkeypatch):
+    """把「现在」钉在 23:59，晚于所有任务的 scheduled_time。
+
+    提醒按任务设定时间判断要不要催，早上跑测试时晚间任务会被跳过，导致「今日任务数
+    等于提醒数」这类断言飘。固定到深夜让所有任务都算已到点，语义与本文件的历史断言一致。
+    """
+    from app.services import reminder_service
+
+    late = datetime(2026, 11, 5, 23, 59, tzinfo=timezone(timedelta(hours=8)))
+    monkeypatch.setattr(reminder_service, "business_now", lambda: late)
+    yield
 
 
 async def fresh_user(client, prefix: str) -> tuple[dict[str, str], str]:
