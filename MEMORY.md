@@ -231,12 +231,28 @@
 
 新增 `views/RemindersView.vue`、`stores/reminders.ts` 与 `/reminders` 路由。Dashboard 的未读列表与标已读也改走 store，不再自己拉一份。后端只加了并发写入兜底，接口字段没动。`pytest` 112 项通过。
 
+## 2026-11-05 阶段跟踪报告
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| P-01 | 周期还没结束就生成报告 | 拒绝 | 409，消息带结束日期 | 无 |
+| P-02 | 结束的周期生成报告 | 200，落总结与报告 | 符合，`report_type=tracking`，三个章节齐全，summary 的 `period_end` 为昨天 | 无 |
+| P-03 | 重复点击生成 | 返回同一份 | 符合，report id 相同，`tracking_summaries` 只有一行 | 无 |
+| P-04 | 取消的计划生成报告 | 拒绝 | 409 | 无 |
+| P-05 | 他人计划生成报告 | 404 | 符合 | 无 |
+| P-06 | 导出阶段报告 | 含完成率与任务数 | 符合，Markdown 里出现「任务完成率」 | 无 |
+| P-07 | Postgres 上跑新迁移 | 约束建立 | 符合，`a7d3e5c9f1b2` 应用，`alembic check` 无差异，`downgrade -1` 后再 upgrade 正常 | 无 |
+| P-08 | 容器内走完整链路 | 未结束 409，结束后 200 | 符合，演示账号实测两次调用同一 id，`tracking_summaries` 落一行 | 无 |
+
+`build_tracking_report` 之前写完零调用，`tracking_summaries` 表建了不写，周期结束没有任何留存物。现在 `POST /plans/{id}/report` 把总结与报告一起落库，计划页收尾区有入口，个人中心的报告列表能回看与导出。`pytest` 117 项通过。
+
 ## 已知取舍
 
 1. 知识检索默认走关键词通道。BGE-M3 与 Chroma 的代码保留在 `app/integrations/chroma_client.py`，需要安装 torch 与 chromadb 并下载模型权重后把 `EMBEDDING_BACKEND` 切到 bge。两套索引独立，不混用向量。
 2. 体检资料只解析 PDF 文本层，不做 OCR。图片与扫描件记 `unsupported` 并保留原件，不用模型猜字段。识别结果需要用户逐项确认才写指标表。
 3. 计划调整只复制任务结构，不改任务日期。整体改期走 `POST /plans/{id}/shift`，只在计划未开始且当前版本无打卡时允许，已经开始就只能逐条改任务。
 4. 无后台调度。提醒在访问时按需生成，这是 FDE 明确的选择。任务级开关只挡当天任务提醒，计划级提醒始终生成。
+5. 周期报告只在周期结束后由用户手动生成，不随打卡自动触发。报告落 `tracking_summaries` 与 `health_reports`，同一计划同一周期只一份。
 
 ## 待核验事项
 
