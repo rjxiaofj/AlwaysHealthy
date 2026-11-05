@@ -219,6 +219,18 @@
 
 原来 `sync` 只在生成时看打卡状态，已生成的「今日任务待完成」不会因为任务完成而消失。现在按 `user_id` 加当天去重键精确查未读行标 `read_at`，不删行，提醒页仍可查。首页今日任务也加了直接打卡按钮，打卡后重新拉数据。`pytest` 111 项通过。
 
+## 2026-11-05 提醒中心
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| N-01 | 点顶部「待办提醒」 | 进提醒中心 | 改动前链回首页，未读数只在布局挂载时算一次，标已读不更新 | layouts/AppLayout.vue |
+| N-02 | 在三个页面之间标已读 | 顶部数字同步 | 符合，列表与未读数都读同一份 store | 无 |
+| N-03 | 布局与首页同时拉提醒 | 只发一次请求 | 符合，`load` 合并同一个 inflight Promise | 无 |
+| N-04 | 两个并发 GET /reminders | 都 200 且不重复生成 | 符合，另在 `sync` 的 commit 上兜底 IntegrityError，撞 `dedup_key` 就回滚放弃本次写入 | 无 |
+| N-05 | 容器 Postgres 实跑 | 冒烟通过，SPA 路由可达 | 符合，`/reminders` 返回 200 HTML，镜像内包含 RemindersView 与 store 的 chunk | 无 |
+
+新增 `views/RemindersView.vue`、`stores/reminders.ts` 与 `/reminders` 路由。Dashboard 的未读列表与标已读也改走 store，不再自己拉一份。后端只加了并发写入兜底，接口字段没动。`pytest` 112 项通过。
+
 ## 已知取舍
 
 1. 知识检索默认走关键词通道。BGE-M3 与 Chroma 的代码保留在 `app/integrations/chroma_client.py`，需要安装 torch 与 chromadb 并下载模型权重后把 `EMBEDDING_BACKEND` 切到 bge。两套索引独立，不混用向量。
