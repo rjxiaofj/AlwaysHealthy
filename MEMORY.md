@@ -513,6 +513,19 @@
 
 会话过期的通知走回调注册（`setSessionExpiredHandler`），不让 api 层 `import router` 造成环。`stores/auth.ts` 里没人用的 `loggedIn` 一并删掉：它读的是 `localStorage`，不是响应式数据，这个 computed 没有依赖，算一次就永久缓存，真拿来当登录态用会在登录后一直显示未登录。
 
+## 2026-11-05 前后端字段一致性守卫
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| CT-01 | 每个映射过的接口，逐条比 `types.ts` 字段与模型字段 | 前端字段全部存在于模型 | 改动前没人比这一层：`ProfileOut` 漏 `age_years`，pydantic `extra='ignore'` 静默丢掉，tsc 与 pytest 各自都绿 | tests/contract/test_frontend_types.py |
+| CT-02 | `types.ts` 新增接口不登记 | 红，提示加进 `MAPPED` 或 `NO_MODEL` | 一开始就抓到被我漏掉的 `ReportSection` | 同上::test_every_interface_is_accounted_for |
+| CT-03 | 表里登记的接口已从 `types.ts` 删掉 | 红，提示清表 | 符合 | 同上 |
+| CT-04 | 解析出的接口数量 | 大于 20 | 符合，解析器被写法绊住时能发现 | 同上::test_types_file_is_found |
+| CT-05 | `GET /profiles/me` | `age_years` 在响应里 | 符合（AG-04 的现场） | 同上::test_profile_response_keys |
+| CT-06~08 | feedback / consents / knowledge 三个 dict 响应 | 键与前端声明一致 | 符合，都加了非空断言，空列表不算通过 | 同上 |
+
+解析器不引 TypeScript 编译器：去行注释、按 `export interface` 定位、大括号配对取 body、只在深度 0 抓 `key:`，泛型接口单列。只比一个方向（前端字段减模型字段为空），后端多给不算问题。变异验证：删 `ProfileOut.age_years`，CT-01 与 CT-05 同时红。`pytest backend` 173 → 203 项。
+
 ## 已知取舍
 
 1. 知识检索默认走关键词通道。BGE-M3 与 Chroma 的代码保留在 `app/integrations/chroma_client.py`，需要安装 torch 与 chromadb 并下载模型权重后把 `EMBEDDING_BACKEND` 切到 bge。两套索引独立，不混用向量。
@@ -533,6 +546,7 @@
 7. `~/.docker/daemon.json` 里加的 `registry-mirrors` 已被 Docker Desktop 覆盖回默认，现在文件里只剩 `builder` 与 `experimental`，`docker info` 没有 Mirrors 项。镜像是本地构建，拉取不受影响，换机部署前要在 Docker Desktop 设置里重新加。
 8. 资料解析的规则按常见检验单写法覆盖，手头没有真实报告样本。真实排版的字段名变体、跨页表格、竖排文字都还没验过，拿到样本后要补规则与用例。
 9. 容器实库上跑 `alembic check` 会报 LangGraph checkpointer 的四张表（`checkpoints`、`checkpoint_writes`、`checkpoint_blobs`、`checkpoint_migrations`）是「待删除」，因为这几张表由 checkpointer 自己建、不在模型里。这是噪音，不是漏迁移。空库上跑 check 才是可比对的信号。
-10. 前端测试覆盖 `api/client.ts`、`stores/reminders.ts`、`views/planLogic.ts`、`views/profileLogic.ts`、`utils/datetime.ts`、`utils/today.ts`、`utils/keyboard.ts`、`utils/redirect.ts`，组件本身仍然没有渲染测试，也没配覆盖率阈值。判定与请求体拼装这类分支已经抽成纯函数并覆盖；组件最依赖真实接口形状，单测收益低于接口契约测试，留到接口稳定后再补。
+10. 前端测试覆盖 `api/client.ts`、`stores/reminders.ts`、`views/planLogic.ts`、`views/profileLogic.ts`、`utils/datetime.ts`、`utils/today.ts`、`utils/keyboard.ts`、`utils/redirect.ts`，组件本身仍然没有渲染测试，也没配覆盖率阈值。判定与请求体拼装这类分支已经抽成纯函数并覆盖；组件最依赖真实接口形状，单测收益低于接口契约测试，留到接口稳定后再补。接口形状这一层已由 `tests/contract/test_frontend_types.py` 承担。
 11. 业务日期固定在东八区（`BUSINESS_TZ`），非东八区用户看到的「今天」会是东八区的今天。急救电话默认 120、文案中文，这个假设与产品定位一致；真要支持其他时区得把偏移做成配置项。
 12. 会话过期是「事后发现」：刷新由请求驱动，用户空闲着令牌过期不会主动续，要等下一次请求拿到 401 才跳转。`LoginView` 的回跳只接受站内绝对路径，底层仍靠 `router.push()` 的兜底重定向，不是唯一防线。
+13. 前后端字段一致性只比字段名，不比类型与可选性。`string` 写成 `number`、后端可空而前端非空，这类抓不到；要比类型得引入 TypeScript 的 AST，代价大于收益。嵌套结构（`ReportDetail.content`、`Recommendation`）也没守卫，靠 `NO_MODEL` 里那几行说明提醒。

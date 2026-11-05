@@ -70,6 +70,8 @@ npm run build                      # 产物进 backend 镜像的 /srv/frontend/d
 
 后端测试用 SQLite，每次会话从空库起，不需要 Postgres。前端测试环境是 happy-dom，不依赖浏览器。
 
+`backend/tests/contract/` 直接读 `frontend/src/api/types.ts`，比字段名：前端声明过的字段，后端模型必须有。改 `types.ts` 或 `app/schemas/` 时它会先红。
+
 `.github/workflows/ci.yml` 在每次 push 与 PR 上跑同样这两组命令，后端用 Python 3.13（与镜像基础版本一致），前端用 Node 22（vitest 5 要求 ^22.12.0）。
 
 ## 部署

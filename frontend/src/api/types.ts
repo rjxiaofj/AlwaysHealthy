@@ -82,7 +82,6 @@ export interface EvidenceSource {
   title: string
   version: string
   page: number | null
-  excerpt?: string
 }
 
 export interface Dimension {

@@ -79,6 +79,7 @@
 - SSE 只推送白名单事件：`run_started`、`node_progress`、`token`、`confirmation_required`、`heartbeat`、`run_completed`、`run_error`。禁止把 HealthState 整体或提示词推给前端。
 - 确认动作绑定 `user_id + 业务对象ID + 版本ID + 操作类型`，凭据一次性消费。
 - 分页统一 `page`、`page_size`，返回 `{items, total, page, page_size}`。
+- 前端 `src/api/types.ts` 是后端响应的镜像。前端声明过的字段，后端模型必须有：加字段两边一起加，删字段两边一起删。`backend/tests/contract/test_frontend_types.py` 比字段名，漏一个就红。这条是踩过的坑——`ProfileOut` 漏了 `age_years`，`get_profile` 传了被 pydantic 的 `extra='ignore'` 静默丢掉，tsc 与 pytest 各自都绿，只有用户看不到年龄。
 
 ## 6. Agent 工具边界
 
@@ -123,6 +124,8 @@
 每条验证在 `MEMORY.md` 记一行：输入、期望、实际、失败日志位置。失败不记“已修复”，只记现象与根因。
 
 前端改动要跑 `npm test`、`npm run type-check`、`npm run build` 三条。`src/api/client.ts` 与 `src/stores/` 下的改动必须带 `.spec.ts`：这两处坏的 symptom 是跨页面的，靠手点验不完。
+
+改了前端 `types.ts` 或后端 `app/schemas/` 时，`pytest tests/contract` 必须先过。新增前端接口不做映射也不写原因，`test_every_interface_is_accounted_for` 会挂——那不是噪音，是在要求给每个新接口做一次决定。
 
 `.github/workflows/ci.yml` 在 push 与 PR 上跑同一组命令。推送后确认 CI 绿了再继续下一个改动，红着连推等于把信号埋掉。
 
