@@ -431,6 +431,7 @@
 | CI-03 | 干净安装后跑 test / type-check / build | 三条都过 | 符合，45 项、无类型错误、构建 7.6 秒 | 无 |
 | CI-04 | PyYAML 解析 `.github/workflows/ci.yml` | 两个 job，步骤顺序正确 | 符合 | 无 |
 | CI-05 | 连续 push 两次 | 只跑最后一次 | 靠 `concurrency.cancel-in-progress` 实现，未实测 | 无 |
+| CI-06 | 推送后第一次真实运行（run #1，`8125819`） | 两个 job 都绿 | 符合，backend 51 秒、frontend 25 秒，每一步 success | 无 |
 
 测试写完却没人自动跑，等于靠记性。上一轮 conftest 路径那个问题只在「从仓库根连跑两次」时才暴露，人工很少这么跑，所以潜伏到现在。CI 用 Python 3.13（对齐 `backend/Dockerfile` 的 `python:3.13-slim`）与 Node 22（`vitest@5.1.0` 要求 `^22.12.0`）。依赖用 `npm ci` 不用 `npm install`：后者会顺手改锁文件，把锁文件漂移这个信号吞掉。
 
