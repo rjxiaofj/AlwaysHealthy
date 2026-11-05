@@ -53,7 +53,6 @@ export const profileApi = {
 export const chatApi = {
   create: (title?: string) => api<{ id: string; thread_id: string }>('/conversations', { body: { title } }),
   list: () => api<Conversation[]>('/conversations'),
-  detail: (id: string) => api<{ id: string; title: string; status: string }>(`/conversations/${id}`),
   messages: (id: string) => api<ChatMessage[]>(`/conversations/${id}/messages`),
 }
 
@@ -92,10 +91,6 @@ export const trackingApi = {
   addMetric: (metricCode: string, value: number, measuredAt: string, context: Record<string, unknown> = {}) =>
     api<{ id: string }>('/tracking/metrics', {
       body: { metric_code: metricCode, value, measured_at: measuredAt, context },
-    }),
-  metrics: (codes: string[], days: number) =>
-    api<PageData<Record<string, unknown>>>('/tracking/metrics', {
-      params: { codes: codes.join(','), days, page: 1, page_size: 200 },
     }),
   feedback: (payload: Record<string, unknown>) => api<{ id: string }>('/tracking/feedback', { body: payload }),
   feedbackList: (days = 30) => api<FeedbackRecord[]>('/tracking/feedback', { params: { days } }),

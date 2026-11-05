@@ -114,7 +114,3 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   }
   return payload.data
 }
-
-export function assetUrl(fileId: string) {
-  return `${BASE}/files/${fileId}/download`
-}
