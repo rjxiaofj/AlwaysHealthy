@@ -284,11 +284,28 @@
 
 `knowledge_sources` 建库时就有，字段与文件 YAML 头几乎一一对应，却一行没写过，报告里的「医学依据」只到标题与版本。现在启动时把文件头同步成台账，按 `source_id` 幂等，文件 sha256 变了才更新，`import_date` 记最近一次实际改动。报告页底部可展开台账，标明每份资料的机构、版本与发布日期。检索通道只多了一个 `load_document` 复用，chunk 结构没变。`pytest` 125 项通过。
 
+## 2026-11-05 调整的确认出口与反馈
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| AD-01 | 调整后看详情 | 有待确认版本，能确认 | 改动前草稿无入口：后端不改 `current_version_id`，前端 `canApprove` 还要求 `pending_review`，确认按钮不出现，`approve()` 传的还是旧版本 | views/PlansView.vue |
+| AD-02 | 确认待确认版本 | 版本生效，详情带调整信息 | 符合，`adjustment.status=approved`，`feedback` 为空 | 无 |
+| AD-03 | 提交反馈后回读 | 详情带这句话 | 符合 | 无 |
+| AD-04 | 同一条记录再提交一次 | 覆盖不追加 | 符合，只剩最后一句 | 无 |
+| AD-05 | 对未生效版本提交反馈 | 拒绝 | 409 `RESOURCE_CONFLICT` | 无 |
+| AD-06 | 放弃调整草稿 | 只作废这一版，计划仍在跑 | 符合，计划 `active`，`current_version_id` 不变，版本 `cancelled`，记录 `rejected` | 无 |
+| AD-07 | 放弃初次计划草稿 | 计划取消 | 符合，计划 `cancelled` | 无 |
+| AD-08 | 同一草稿放弃两次 | 拒绝 | 409 | 无 |
+| AD-09 | 他人计划提交反馈 | 404 | 符合 | 无 |
+| AD-10 | 容器 Postgres 上走完整流程 | 调整、确认、反馈、再调整、放弃 | 符合，`plan_adjustment_records` 两行：`approved` 带反馈，`rejected` 无反馈，两条 `confirmed_at` 都非空 | 无 |
+
+`user_feedback` 之所以一直为空，不是没人写，是依赖的确认动作走不到。现在待确认版本从 `versions` 里找 `status=draft`，不再看计划状态；确认与放弃两个出口都给了，放弃调整不会把整个计划带走。`reject_version` 按来源分流，返回值从 `None` 改成一句结论供提示用，图流程的调用不看返回值所以不受影响。`pytest` 135 项通过。
+
 ## 已知取舍
 
 1. 知识检索默认走关键词通道。BGE-M3 与 Chroma 的代码保留在 `app/integrations/chroma_client.py`，需要安装 torch 与 chromadb 并下载模型权重后把 `EMBEDDING_BACKEND` 切到 bge。两套索引独立，不混用向量。
 2. 体检资料只解析 PDF 文本层，不做 OCR。图片与扫描件记 `unsupported` 并保留原件，不用模型猜字段。识别结果需要用户逐项确认才写指标表。
-3. 计划调整只复制任务结构，不改任务日期。整体改期走 `POST /plans/{id}/shift`，只在计划未开始且当前版本无打卡时允许，已经开始就只能逐条改任务。
+3. 计划调整只复制任务结构，不改任务日期。调整先生成草稿，确认才生效，放弃只作废这一版。整体改期走 `POST /plans/{id}/shift`，只在计划未开始且当前版本无打卡时允许，已经开始就只能逐条改任务。
 4. 无后台调度。提醒在访问时按需生成，这是 FDE 明确的选择。任务级开关只挡当天任务提醒，计划级提醒始终生成。
 5. 周期报告只在周期结束后由用户手动生成，不随打卡自动触发。报告落 `tracking_summaries` 与 `health_reports`，同一计划同一周期只一份。
 6. 前端封装层的清理只删了真正没人调的三个方法。后端 `GET /assessments/{id}/evidence`、`GET /conversations/{id}`、`GET /runs/{run_id}`、`GET /tracking/metrics` 仍保留：前两个的字段与 detail 重复，后两个是调试入口，删掉会牵动 OpenAPI 与文档示例，暂时留着。
