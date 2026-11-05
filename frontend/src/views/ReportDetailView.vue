@@ -34,6 +34,29 @@ async function download() {
   }
 }
 
+async function printPdf() {
+  if (!report.value) return
+  try {
+    // print 端点需要登录态，先 fetch 拿到打印友好的 HTML，再开新窗口触发打印
+    const response = await fetch(reportApi.printUrl(report.value.id), {
+      headers: { Authorization: `Bearer ${tokens.access}` },
+    })
+    if (!response.ok) throw new Error('导出失败')
+    const html = await response.text()
+    const win = window.open('', '_blank')
+    if (!win) {
+      toast.error('浏览器拦截了新窗口，请允许弹出窗口后重试')
+      return
+    }
+    win.document.write(html)
+    win.document.close()
+    // 等新窗口里的内容与样式就绪再触发打印，否则可能打印出空白页
+    win.addEventListener('load', () => setTimeout(() => win.print(), 300))
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : '导出失败')
+  }
+}
+
 onMounted(async () => {
   try {
     report.value = await reportApi.detail(String(route.params.id))
@@ -58,6 +81,7 @@ onMounted(async () => {
         <div class="flex items-center gap-2">
           <RiskBadge v-if="report?.content.overall_level" :level="report.content.overall_level" />
           <button class="btn btn-ghost" @click="download">导出 Markdown</button>
+          <button class="btn btn-primary" @click="printPdf">导出 PDF</button>
         </div>
       </div>
     </section>

@@ -74,6 +74,12 @@ async def test_report_generated_after_cycle_end(client, auth, session) -> None:
     assert "阶段跟踪报告" in export.text
     assert "任务完成率" in export.text
 
+    printed = await client.get(f"/api/v1/reports/{data['id']}/print", headers=auth)
+    assert printed.status_code == 200
+    assert printed.headers["content-type"].startswith("text/html")
+    assert "<!DOCTYPE html>" in printed.text
+    assert "阶段跟踪报告" in printed.text
+
 
 async def test_report_is_idempotent(client, auth, session) -> None:
     plan = await activate_plan(client, auth)

@@ -44,3 +44,15 @@ async def export_report(
         media_type="text/markdown; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="report-{report_id}.md"'},
     )
+
+
+@router.get("/reports/{report_id}/print")
+async def print_report(
+    report_id: UUID,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(db_session),
+):
+    """打印友好版：返回独立 HTML，浏览器「打印 → 另存为 PDF」即可导出 PDF。"""
+    report = await report_service.detail(session, user.id, report_id)
+    html = report_service.to_print_html(report)
+    return Response(content=html.encode("utf-8"), media_type="text/html; charset=utf-8")

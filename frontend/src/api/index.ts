@@ -115,6 +115,7 @@ export const reportApi = {
   detail: (id: string) => api<ReportDetail>(`/reports/${id}`),
   createTracking: (planId: string) => api<ReportDetail>(`/plans/${planId}/report`, { body: {} }),
   exportUrl: (id: string) => `${window.location.origin}/api/v1/reports/${id}/export`,
+  printUrl: (id: string) => `${window.location.origin}/api/v1/reports/${id}/print`,
 }
 
 export const reminderApi = {
