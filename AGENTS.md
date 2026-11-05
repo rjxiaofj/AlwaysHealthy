@@ -48,6 +48,7 @@
 | 规则引擎 | `app/tools/risk_engine/*` | 阈值算错会直接给出错误风险等级 |
 | 计划校验 | `app/tools/plan_validator.py` | 未校验的计划不得生效 |
 | 密码与文件 | `app/core/security.py`、`app/services/file_service.py` | 哈希算法降级与文件类型绕过 |
+| 启动配置 | `app/core/config.py` | prod 用默认密钥启动等于谁都能签出合法令牌 |
 
 ## 4. 数据规则
 

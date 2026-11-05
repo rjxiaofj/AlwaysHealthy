@@ -1,6 +1,9 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEV_JWT_SECRET = "dev-secret-change-before-demo"
 
 
 class Settings(BaseSettings):
@@ -14,7 +17,7 @@ class Settings(BaseSettings):
     # memory 用于本地开发与测试，postgres 用于演示部署
     checkpointer: str = "memory"
 
-    jwt_secret: str = "dev-secret-change-before-demo"
+    jwt_secret: str = DEV_JWT_SECRET
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 30
     refresh_token_days: int = 14
@@ -36,6 +39,13 @@ class Settings(BaseSettings):
     graph_concurrency: int = 4
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @model_validator(mode="after")
+    def _reject_dev_secret_in_prod(self) -> "Settings":
+        # 默认密钥是公开的，prod 下留着等于谁都能签出合法令牌
+        if self.env == "prod" and self.jwt_secret == DEV_JWT_SECRET:
+            raise ValueError("env=prod 时必须显式设置 JWT_SECRET")
+        return self
 
     @property
     def upload_max_bytes(self) -> int:
