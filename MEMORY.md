@@ -636,6 +636,39 @@ CI 上一向是绿的、只要 25 秒，因为 `.env` 不入库、密钥为空�
 
 `postStream` 自己持一个 `AbortController`，180 秒定时器到点 `abort()`——这样连「等待响应头」的阶段也管住（原来那一段完全没遮拦）。外部信号用 `addEventListener('abort', relayAbort)` 转接，`timedOut` 标记负责区分超时与用户取消。变异：`TOTAL_TIMEOUT_MS` 改 60 秒，ST-03 挂。前端 133 → 135 项。
 
+## 2026-11-05 打包体积进 CI
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| BG-01 | `npm run size`，各项在预算内 | 退出 0，打印剩余余量 | firstLoad 48.7 / totalJs 84.0 / totalCss 4.8 / singleChunk 44.3，各剩 9.3 / 16.0 / 3.2 / 15.7 kB | frontend/scripts/check-bundle-size.mjs |
+| BG-02 | 把 `firstLoad` 预算改成 10 kB | 退出 1 并指出超了多少 | 报 `firstLoad: 48.7 kB > 预算 10 kB` | 同上 |
+| BG-03 | 单个路由 chunk 重新塞进一个图表库 | 红 | `singleChunk` 红线 60 kB，入口现在 44.3，塞不进 466 kB | bundle-budget.json |
+
+「首屏」按 `dist/index.html` 里直接引用的文件算（entry + modulepreload），路由 chunk 不算——它们要等用户点进去才下。CI 在 build 之后加一步。`--report` 只打印不判，调预算时用。
+
+## 2026-11-05 组件渲染测试起步
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| RT-01 | 空数据 | 显示「暂无可画的数据」，不渲染 `<svg>` | 符合 | components/TrendChart.spec.ts |
+| RT-02 | 3 个点 | 3 个 `<circle>`，`path.chart-line` 以 `M … C` 开头 | 符合 | 同上 |
+| RT-03 | 容器 400px | `svg[width]` 等于 400，末点贴右侧留白 | 改动前只有几何层用例，没人验宽度有没有真的传进去；变异成写死 640 后这条挂 | 同上 |
+| RT-04 | `pointermove` 到中间点再 `pointerleave` | 提示框出现（含日期/数值/单位）后消失 | 符合 | 同上 |
+| RT-05 | 鼠标贴最左 | 提示框 `left ≥ 64`，不被容器切掉 | 符合 | 同上 |
+| RT-06 | 所有坐标标签 | `y` 落在画布内 | 符合 | 同上 |
+
+`happy-dom` 没有布局也没有 `ResizeObserver`，测试里塞一个 `observe()` 时同步回调 400px 的 stub，组件会走完「实测宽度 → 重算 → 重渲染」整条路，比直接 mock `clientWidth` 更接近真实行为。引了 `@vue/test-utils`。前端 135 → 141 项。
+
+## 2026-11-05 契约守卫钻到元素层
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| TC-27 | `list[str]` / `list[ProfileOut]` / `dict[str, int]` | 元素分别是 string / object / number | 符合；`list[str \| None]` 与 `dict[str, Any]` 返回 None 表示不比 | tests/contract/test_frontend_types.py::_annotation_element |
+| TC-28 | `string[]` / `MetricPoint[]` / `Array<number>` / `Record<string, number>` | 元素分别是 string / object / number / number | 符合 | 同上::_ts_element |
+| TC-29 | `Trend.points` 改成 `string[]` | 红 | 报「元素类型后端是 object，前端声明 'string[]' 里是 string」 | 同上::test_frontend_type_width_matches_model |
+
+两边都能定成单一类型时才比，联合与通配符跳过。24 个接口放开后全过，说明现有声明没漂移。后端 259 → 260 项。
+
 ## 已知取舍
 
 
@@ -657,11 +690,11 @@ CI 上一向是绿的、只要 25 秒，因为 `.env` 不入库、密钥为空�
 7. `~/.docker/daemon.json` 里加的 `registry-mirrors` 已被 Docker Desktop 覆盖回默认，现在文件里只剩 `builder` 与 `experimental`，`docker info` 没有 Mirrors 项。镜像是本地构建，拉取不受影响，换机部署前要在 Docker Desktop 设置里重新加。
 8. 资料解析的规则按常见检验单写法覆盖，手头没有真实报告样本。真实排版的字段名变体、跨页表格、竖排文字都还没验过，拿到样本后要补规则与用例。
 9. 容器实库上跑 `alembic check` 会报 LangGraph checkpointer 的四张表（`checkpoints`、`checkpoint_writes`、`checkpoint_blobs`、`checkpoint_migrations`）是「待删除」，因为这几张表由 checkpointer 自己建、不在模型里。这是噪音，不是漏迁移。空库上跑 check 才是可比对的信号。
-10. 前端测试覆盖 `api/client.ts`、`stores/reminders.ts`、`views/planLogic.ts`、`views/profileLogic.ts`、`utils/datetime.ts`、`utils/today.ts`、`utils/keyboard.ts`、`utils/redirect.ts`，组件本身仍然没有渲染测试，也没配覆盖率阈值。判定与请求体拼装这类分支已经抽成纯函数并覆盖；组件最依赖真实接口形状，单测收益低于接口契约测试，留到接口稳定后再补。接口形状这一层已由 `tests/contract/test_frontend_types.py` 承担。
+10. 前端测试覆盖 `api/client.ts`、`api/stream.ts`、`stores/reminders.ts`、`views/planLogic.ts`、`views/profileLogic.ts`、`utils/*`（datetime、today、keyboard、redirect、sse、abort、nav）与 `components/chartGeometry.ts`，外加 `TrendChart` 的 6 条渲染用例（RT-01~06）。其余组件（聊天页、计划页、档案页）仍没有渲染测试，也没配覆盖率阈值：它们的判定与请求体拼装已抽成纯函数覆盖，剩下的是模板与事件接线。接口形状由 `tests/contract/test_frontend_types.py` 承担。
 11. 业务日期固定在东八区（`BUSINESS_TZ`），非东八区用户看到的「今天」会是东八区的今天。急救电话默认 120、文案中文，这个假设与产品定位一致；真要支持其他时区得把偏移做成配置项。
 12. 会话过期是「事后发现」：刷新由请求驱动，用户空闲着令牌过期不会主动续，要等下一次请求拿到 401 才跳转。`LoginView` 的回跳只接受站内绝对路径，底层仍靠 `router.push()` 的兜底重定向，不是唯一防线。
 13. 前后端字段一致性比字段名、可空性与类型宽度（`NC`/`TC`），但不比类型**细节**：`string` 与字面量联合、`number[]` 与元素类型都算一类，元素层不再往下钻。请求体（`ProfilePatchBody`）方向相反，验「前端可能发的类型后端接得住」。嵌套结构（`ReportDetail.content`、`Recommendation`）与 `NO_MODEL` 里那些 service 拼的 dict 依旧没模型可对，只靠运行时取键。泛型接口（`ApiEnvelope<T>`、`PageData<T>`）解析时跳过。
-14. 趋势图已无 echarts，改手写 SVG（`chartGeometry.ts` + `TrendChart.vue`）。代价是没有动画、缩放与多序列叠加，真需要第二条线得自己扩几何层。平滑用单调三次贝塞尔，代价是曲线比 Catmull-Rom 略「硬」——换来的是不会凭空鼓出没测到过的峰。首屏体积仍无自动化度量，数字来自构建输出。
+14. 趋势图已无 echarts，改手写 SVG（`chartGeometry.ts` + `TrendChart.vue`）。代价是没有动画、缩放与多序列叠加，真需要第二条线得自己扩几何层。平滑用单调三次贝塞尔，代价是曲线比 Catmull-Rom 略「硬」——换来的是不会凭空鼓出没测到过的峰。体积已有自动化度量（`npm run size`，BG-01~03），只量 gzip 不量执行时间。
 15. 流式请求只对 401 重放，其他错误（500、网络断）不重试：健康咨询是长耗时请求，自动重试有重复生成回复的风险。两道时间闸：空闲 45 秒（多久没收到一个字节）与总时长 180 秒（一直在吐字也总会断），后者靠 abort 打断 fetch，连「等响应头」阶段一起管住。总时长是硬上限，真跑满三分钟的长咨询会被截断；真正的解法是后端按 token 数或工作流步数自己收口。流结束时若最后一帧没有空行收尾仍会被丢掉，当前后端每条事件都带 `\n\n`，实际不触发。
 16. 离开聊天页会 abort 在跑的流，已收到的 token 保留在气泡里，不会补全成完整回复；后台也没有断点续流，回来只能重新发一次。`controller` 是模块级单例，同一时刻只允许一条流，重发会掐掉上一条——这是有意的，否则晚到的 token 会拼进新消息。
 17. 测试永远拿不到模型：`conftest.py` 把 `LLM_API_KEY` 清空。想用真实模型验一遍聊天链路，得手动注释掉那一行再单独跑用例（或直接在浏览器里跑端到端）。这样换来的是测试与 CI 完全一致、不花钱、不随模型输出飘。

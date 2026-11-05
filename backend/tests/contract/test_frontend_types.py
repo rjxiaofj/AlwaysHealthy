@@ -303,6 +303,42 @@ def _ts_kinds(type_text: str) -> set[str]:
     return kinds
 
 
+def _single(kinds: set[str]) -> str | None:
+    """只有一个明确类型时返回它。联合类型与通配符都不猜，返回 None 表示「不比这一层」。"""
+    if len(kinds) != 1:
+        return None
+    kind = next(iter(kinds))
+    return None if kind == _WILDCARD else kind
+
+
+def _annotation_element(annotation: object) -> str | None:
+    """列表元素 / dict 值的类型。`list[str | None]` 这种联合不猜。"""
+    origin = get_origin(annotation)
+    args = get_args(annotation)
+    if origin is Annotated:
+        return _annotation_element(args[0])
+    if origin is dict:
+        return _single(_annotation_kinds(args[1])) if len(args) == 2 else None
+    if origin in (list, set, frozenset, tuple):
+        return _single(_annotation_kinds(args[0])) if args else None
+    return None
+
+
+_ARRAY_SUFFIX = re.compile(r"^(?P<inner>.+)\[\]$")
+_ARRAY_GENERIC = re.compile(r"^Array<(?P<inner>.+)>$")
+_RECORD_GENERIC = re.compile(r"^Record<[^,]+,\s*(?P<inner>.+)>$")
+
+
+def _ts_element(type_text: str) -> str | None:
+    """前端声明里的元素类型：`Foo[]`、`Array<Foo>`、`Record<string, Foo>`。"""
+    text = type_text.strip()
+    for pattern in (_ARRAY_SUFFIX, _ARRAY_GENERIC, _RECORD_GENERIC):
+        match = pattern.match(text)
+        if match:
+            return _single(_ts_kinds(match.group("inner")))
+    return None
+
+
 @pytest.mark.parametrize("interface", sorted(MAPPED))
 def test_frontend_type_width_matches_model(interface: str):
     """前端声明的类型必须装得下后端真正给的值。
@@ -336,6 +372,15 @@ def test_frontend_type_width_matches_model(interface: str):
             if problem:
                 violations.append(f"{name}: 后端 {sorted(backend)}，前端写的是 {type_text!r}")
 
+        # 容器对了，里面的东西也可能不对：`list[int]` 写成 `string[]`，模板里对元素
+        # 调 `.toFixed()` 一样炸。两边都能定成一个类型时才比，联合与通配符跳过
+        backend_element = _annotation_element(field.annotation)
+        frontend_element = _ts_element(type_text)
+        if backend_element and frontend_element and backend_element != frontend_element:
+            violations.append(
+                f"{name}: 元素类型后端是 {backend_element}，前端声明 {type_text!r} 里是 {frontend_element}"
+            )
+
     assert not violations, (
         f"{interface} 里这些字段前后端的类型对不上：{violations}。"
         "tsc 只信声明，运行时不会替你转换"
@@ -356,6 +401,23 @@ def test_annotation_kinds_mapping_is_what_the_frontend_sees():
     assert _annotation_kinds(Literal[1, 2]) == {"number"}
     assert _annotation_kinds(str | None) == {"string", "null"}
     assert _annotation_kinds(Annotated[int, "约束"]) == {"number"}
+
+
+def test_element_types_are_mapped_consistently():
+    """元素层的一小张表。容器对了、里面错了，是这一类里最容易漏的。"""
+    assert _annotation_element(list[str]) == "string"
+    assert _annotation_element(list[ProfileOut]) == "object"
+    assert _annotation_element(dict[str, int]) == "number"
+    assert _annotation_element(list[str | None]) is None
+    assert _annotation_element(dict[str, Any]) is None
+    assert _annotation_element(str) is None
+
+    assert _ts_element("string[]") == "string"
+    assert _ts_element("MetricPoint[]") == "object"
+    assert _ts_element("Array<number>") == "number"
+    assert _ts_element("Record<string, number>") == "number"
+    assert _ts_element("number | null") is None
+    assert _ts_element("string") is None
 
 
 def test_ts_kinds_parsing_handles_the_shapes_types_file_uses():

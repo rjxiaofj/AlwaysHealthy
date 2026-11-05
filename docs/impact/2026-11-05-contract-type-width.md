@@ -40,3 +40,18 @@
 ## 仍然比不了
 
 嵌套结构（`ReportDetail.content`、`Recommendation`）与 `NO_MODEL` 里那些 service 拼的 dict 依旧没有模型可对，只靠运行时取键 + 注释提醒。泛型接口（`ApiEnvelope<T>`、`PageData<T>`）在解析时被跳过。
+
+## 补记：再往下一层，比元素类型
+
+容器对了、里面错了是同一类问题里最容易漏的：`list[int]` 写成 `string[]`，模板里对元素 `.toFixed()` 一样炸。上面那版只比到 `array` / `object` 这一层。
+
+现在补两个函数：
+
+- `_annotation_element`：`list[X]` 取 `X`、`dict[str, X]` 取 `X`。
+- `_ts_element`：`Foo[]`、`Array<Foo>`、`Record<string, Foo>` 三种写法取内层。
+
+两边都能定成**单一**类型时才比；`list[str | None]` 这种联合、以及 `dict[str, Any]` 这种通配符直接跳过，不猜。
+
+24 个接口放开后全过——说明现有声明里没有漂移。变异验证：`Trend.points` 从 `MetricPoint[]` 改成 `string[]`，报「元素类型后端是 object，前端声明 'string[]' 里是 string」，红。另加一条 `test_element_types_are_mapped_consistently` 钉住元素层的映射表。后端 259 → 260 项。
+
+仍然不比：元组的逐位类型、嵌套两层的 `list[list[int]]`（外层已够用）、以及 `NO_MODEL` 里那些 dict。
