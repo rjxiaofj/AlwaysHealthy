@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import { trackingApi } from '@/api'
 import type { FeedbackRecord, Trend } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
-// 与首页一致：echarts 466 kB，没有数据时不该下
-const TrendChart = defineAsyncComponent(() => import('@/components/TrendChart.vue'))
+import TrendChart from '@/components/TrendChart.vue'
 import { useToastStore } from '@/stores/toast'
 import { localDateTimeInput } from '@/utils/datetime'
 
@@ -174,7 +173,7 @@ onMounted(load)
             {{ item.label }}
           </button>
         </div>
-        <div v-if="selected && selected.points.length" class="min-h-[260px]">
+        <div v-if="selected && selected.points.length">
           <TrendChart :points="selected.points" :label="selected.label" :unit="selected.unit" />
         </div>
         <EmptyState v-else title="没有该指标的记录" description="在右侧录入一次测量后会生成曲线" />

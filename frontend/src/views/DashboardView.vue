@@ -1,14 +1,13 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import { assessmentApi, planApi, trackingApi } from '@/api'
 import type { Assessment, Plan, Task, Trend } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
 import RiskBadge from '@/components/RiskBadge.vue'
-// echarts 这一个包 466 kB，比其余所有页面加起来还大。静态引入的话新用户一进首页
-// 就要下它，哪怕一条指标都没有、只显示「还没有指标记录」。改成按需加载：
-// 模板里本来就是 v-if 有数据才渲染，没数据时这个 chunk 根本不会被请求
-const TrendChart = defineAsyncComponent(() => import('@/components/TrendChart.vue'))
+// 手写 SVG 之后这个组件只有几 kB，跟路由一起打进首屏比多一次请求划算，
+// 不再需要 defineAsyncComponent 与占位高度
+import TrendChart from '@/components/TrendChart.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useReminderStore } from '@/stores/reminders'
 import { useToastStore } from '@/stores/toast'
@@ -217,8 +216,8 @@ onMounted(load)
           </button>
         </div>
       </div>
-      <!-- 外层留出 260px：图表按需加载的那一瞬间组件还没挂上，没有这层会看到布局塌一下 -->
-      <div v-if="selectedTrend && selectedTrend.points.length" class="min-h-[260px]">
+      <!-- 组件自带 260px 高度，这里只负责「有数据才渲染」 -->
+      <div v-if="selectedTrend && selectedTrend.points.length">
         <TrendChart
           :points="selectedTrend.points"
           :label="selectedTrend.label"
