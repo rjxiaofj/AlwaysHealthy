@@ -107,6 +107,7 @@
 | M-05 | 同一库执行 downgrade base | 只剩 alembic_version | 符合，无残留表 | 无 |
 | M-06 | 降级后再 upgrade head | 可重复升降 | 符合 | 无 |
 | M-07 | alembic check 比对模型与迁移 | 无差异 | 输出 No new upgrade operations detected | 无 |
+| M-08 | Postgres 上 upgrade head 到 downgrade base 再 upgrade | 可重复升降 | 符合，两个版本依次应用与回滚，重建后 28 张表，check 仍无差异 | 无 |
 
 ## 2026-11-05 容器实跑
 
@@ -124,6 +125,7 @@
 | C-08 | 校验接口中文 | 正常 UTF-8 | 计划标题 `14天健康管理计划` 长度 9，未被破坏 | 无 |
 | C-09 | 越权访问 /health/services | 拒绝 | 普通账号返回 403 需要管理员权限 | 无 |
 | C-10 | compose 三容器健康 | 全部 healthy | backend、postgres、redis 都是 healthy | 无 |
+| C-11 | 重建镜像后重启 | 新代码生效，冒烟仍通过 | 符合，认证、两段确认、35 个任务、评估、报告、提醒、高危拦截全部走通 | 无 |
 
 ## 2026-11-05 资料解析
 
@@ -195,7 +197,7 @@
 2. PHQ-2 与 PHQ-9 的中文验证版本与授权条件未核实，当前只用于演示量表分级。
 3. 急救电话为配置项，默认 120，部署到其他地区必须改。
 4. BGE-M3 在本机的加载耗时与内存占用未测。向量通道代码已就位，依赖见 `backend/requirements-vector.txt`。
-5. Docker Compose 已在本机实跑，三容器 healthy，冒烟通过，见 C-01 至 C-10。
-6. Postgres 上的 upgrade 已实测。downgrade 只在 sqlite 上跑过，Postgres 上没做降级，动迁移脚本前要先在一次性库上验一遍。
+5. Docker Compose 已在本机实跑，三容器 healthy，冒烟通过，见 C-01 至 C-11。
+6. Postgres 上的 upgrade 与 downgrade 都实测过，一次性库上完成升降循环，见 M-04 至 M-08。
 7. `~/.docker/daemon.json` 里加的 `registry-mirrors` 需要重启引擎才生效，重启后确认 `docker info` 的 Mirrors 是否非空。
 8. 资料解析的规则按常见检验单写法覆盖，手头没有真实报告样本。真实排版的字段名变体、跨页表格、竖排文字都还没验过，拿到样本后要补规则与用例。
