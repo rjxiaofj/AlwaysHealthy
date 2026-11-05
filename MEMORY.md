@@ -184,6 +184,19 @@
 
 改动前 `reminder_enabled` 只是列和入参，`reminder_service.sync` 不读，开关等于摆设。现在只挡 `task_due`，计划级的两条提醒不受影响；复制版本沿用原任务的值。本机演示库是老结构，该列默认 false，重建库即可。`pytest` 102 项通过。
 
+## 2026-11-05 重新评估闭环
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| X-01 | 调接口登记重新评估 | 写一条审计 | 改动前调用 `health_repo.audit`，该模块没有这个方法，抛 AttributeError 接口 500 | tracking_service.reassessment_request |
+| X-02 | 把用户填的原因写进审计 | 能落库 | 改动前 `result=reason[:120]`，列是 varchar(16)，Postgres 报 value too long for type character varying(16) | 同上 |
+| X-03 | 原因不足 2 字 | 拒绝 | 422 | 无 |
+| X-04 | 正常登记 | 200 且审计 result 为 requested | 符合，容器 Postgres 上实测写入成功，length 9 | 无 |
+| X-05 | 未登录调用 | 401 | 符合 | 无 |
+| X-06 | 登记后按当前档案生成新评估 | 200，历史评估与报告不动 | 符合，容器里返回 200 并新写入一条评估，报告列表里前几次的报告都还在 | 无 |
+
+这两个缺陷只在真库上暴露：SQLite 不校验 varchar 长度，`health_repo` 的错误又因为没人调用而潜伏，105 项用例全绿时它们都在。审计的 `result` 只能写 `success`、`fail`、`requested` 这类短词，原因写日志。前端把周期收尾入口接上了，计划结束或只剩两天时出现。
+
 ## 已知取舍
 
 1. 知识检索默认走关键词通道。BGE-M3 与 Chroma 的代码保留在 `app/integrations/chroma_client.py`，需要安装 torch 与 chromadb 并下载模型权重后把 `EMBEDDING_BACKEND` 切到 bge。两套索引独立，不混用向量。
