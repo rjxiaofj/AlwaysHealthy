@@ -536,6 +536,15 @@
 
 首屏 JS 从约 590 kB（gzip 202.6）降到约 129 kB（gzip 50.6）。拆包本身让入口从 115.65 涨到 117.78 外加 2.63 kB 的 API chunk，合计多约 4.8 kB，换来 466 kB 移出首屏。这一层没有自动化覆盖：要真验得用浏览器测试统计首屏请求，当前没这套设施。
 
+## 2026-11-05 确认阶段消息重复
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| CM-01 | 只走到画像确认 | 一条 confirm，以「已记录」开头 | 符合 | 无 |
+| CM-02 | 再走到计划确认 | 两条 confirm，内容不同，第二条含「计划」 | 改动前第二条与第一条一字不差：`_stream()` 用 `values["reply"]` 补全，而 plan 这一段 assess/intervene/plan/plan_validator 都不写 reply，拿到的是 data_collector 的旧文案 | app/services/graph_service.py::_stream、_mark_waiting |
+
+两个 `interrupt()` 本来就各自带了阶段 `message`，`_mark_waiting` 一直没用。改成 `fresh_reply or payload["message"]`：本段有新回复用新回复（保住画像阶段的「已记录：…」），没有就用阶段提示。变异验证：改回 `text = reply`，CM-02 红、CM-01 绿。后端 205 → 207 项。
+
 ## 已知取舍
 
 1. 知识检索默认走关键词通道。BGE-M3 与 Chroma 的代码保留在 `app/integrations/chroma_client.py`，需要安装 torch 与 chromadb 并下载模型权重后把 `EMBEDDING_BACKEND` 切到 bge。两套索引独立，不混用向量。

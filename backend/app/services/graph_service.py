@@ -149,12 +149,19 @@ class GraphService:
 
         snapshot = await self.graph.aget_state(config)
         values = dict(snapshot.values or {})
+        # 这一段里有没有节点产出新 reply。state 里的 reply 是整条链上最后一次写进去的值，
+        # 恢复运行后如果这一段没有新 reply，它就是上一步的旧文案
+        fresh_reply = reply
         reply = values.get("reply") or reply
 
         if interrupted is not None:
             payload = await self._enrich_interrupt(ctx, interrupted)
             yield ("confirmation_required", payload)
-            await self._mark_waiting(ctx, values, reply)
+            # 计划确认这一段（assess → intervene → plan → plan_validator）没有任何节点写 reply，
+            # 沿用 state 里的旧值会把 data_collector 那句「已记录：年龄 39…」再存一条，
+            # 聊天里就出现两条一模一样的消息。没有新 reply 时用这次 interrupt 自带的阶段提示
+            text = fresh_reply or payload.get("message") or ""
+            await self._mark_waiting(ctx, values, text)
             return
 
         if reply:
