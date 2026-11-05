@@ -328,7 +328,7 @@ onMounted(() => load())
             </div>
           </div>
 
-          <div class="mt-4 flex flex-wrap items-end gap-2">
+          <div v-if="canCancel" class="mt-4 flex flex-wrap items-end gap-2">
             <div class="min-w-[220px] flex-1">
               <label class="label" for="reason">调整原因</label>
               <input id="reason" v-model="adjustReason" class="field" placeholder="例如：任务太多，想减少到每天两项" />

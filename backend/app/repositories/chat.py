@@ -1,3 +1,4 @@
+from datetime import date
 from uuid import UUID
 
 from sqlalchemy import select
@@ -62,6 +63,24 @@ async def report_of(session: AsyncSession, user_id: UUID, report_id: UUID) -> He
 async def notifications_of(session: AsyncSession, user_id: UUID) -> list[Notification]:
     rows = await session.scalars(
         select(Notification).where(Notification.user_id == user_id).order_by(Notification.created_at.desc()).limit(50)
+    )
+    return list(rows)
+
+
+async def unread_task_reminders(
+    session: AsyncSession, user_id: UUID, task_ids: set[UUID], day: date
+) -> list[Notification]:
+    """取今天已打卡任务对应的未读提醒。键按生成时的口径拼，不用模糊匹配以免误伤别的日期。"""
+    if not task_ids:
+        return []
+    keys = [f"task_due:{task_id}:{day.isoformat()}" for task_id in task_ids]
+    rows = await session.scalars(
+        select(Notification).where(
+            Notification.user_id == user_id,
+            Notification.notification_type == "task_due",
+            Notification.dedup_key.in_(keys),
+            Notification.read_at.is_(None),
+        )
     )
     return list(rows)
 

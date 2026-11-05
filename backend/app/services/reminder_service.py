@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -70,9 +70,14 @@ async def sync(session: AsyncSession, user_id: UUID) -> None:
                 )
             )
 
+    cleared = await chat_repo.unread_task_reminders(session, user_id, checked, today)
+    for row in cleared:
+        # 任务已完成，待完成提醒不再留在未读里；保留行，提醒页还能查到这条通知
+        row.read_at = datetime.now(UTC)
+
     for item in created:
         session.add(item)
-    if created:
+    if created or cleared:
         await session.commit()
 
 

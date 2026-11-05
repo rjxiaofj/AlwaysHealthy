@@ -2,14 +2,17 @@
 import { computed, onMounted, ref } from 'vue'
 
 import { assessmentApi, planApi, reminderApi, trackingApi } from '@/api'
-import type { Assessment, Plan, Reminder, Trend } from '@/api/types'
+import type { Assessment, Plan, Reminder, Task, Trend } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
 import RiskBadge from '@/components/RiskBadge.vue'
 import TrendChart from '@/components/TrendChart.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useToastStore } from '@/stores/toast'
 
 const auth = useAuthStore()
+const toast = useToastStore()
 const loading = ref(true)
+const checking = ref('')
 const assessment = ref<Assessment | null>(null)
 const plan = ref<Plan | null>(null)
 const reminders = ref<Reminder[]>([])
@@ -58,6 +61,19 @@ async function markRead(id: string) {
     reminders.value = reminders.value.filter((item) => item.id !== id)
   } catch {
     /* 标记失败不挡住页面，下次进入还会重新拉取 */
+  }
+}
+
+async function checkin(task: Task) {
+  checking.value = task.id
+  try {
+    await planApi.checkin(task.id, 'completed')
+    toast.success('已记一次完成')
+    await load()
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : '打卡失败')
+  } finally {
+    checking.value = ''
   }
 }
 
@@ -137,9 +153,19 @@ onMounted(load)
                 <p class="truncate text-[12px] font-medium">{{ task.title }}</p>
                 <p class="truncate text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">{{ task.completion_criteria }}</p>
               </div>
-              <span class="chip" :class="task.checkin_status === 'completed' ? 'level-low' : 'level-unknown'">
-                {{ task.checkin_status === 'completed' ? '已完成' : '待完成' }}
-              </span>
+              <div class="flex shrink-0 items-center gap-2">
+                <span class="chip" :class="task.checkin_status === 'completed' ? 'level-low' : 'level-unknown'">
+                  {{ task.checkin_status === 'completed' ? '已完成' : '待完成' }}
+                </span>
+                <button
+                  v-if="plan?.status === 'active' && task.checkin_status !== 'completed'"
+                  class="btn btn-primary !px-3 !py-1 text-[11px]"
+                  :disabled="checking === task.id"
+                  @click="checkin(task)"
+                >
+                  完成
+                </button>
+              </div>
             </li>
           </ul>
         </section>

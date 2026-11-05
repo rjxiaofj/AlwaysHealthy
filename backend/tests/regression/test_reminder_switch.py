@@ -4,7 +4,7 @@ from datetime import date
 from sqlalchemy import delete, select
 
 from app.db.models import Notification, User
-from tests.helpers import activate_plan
+from tests.helpers import activate_plan, today_task_id
 
 
 async def fresh_user(client, prefix: str) -> tuple[dict[str, str], str]:
@@ -67,3 +67,53 @@ async def test_patch_task_sets_time(client, auth) -> None:
     response = await client.patch(f"/api/v1/tasks/{task_id}", json={"scheduled_time": "08:30"}, headers=auth)
     assert response.status_code == 200, response.text
     assert response.json()["data"]["scheduled_time"] == "08:30"
+
+
+async def test_checkin_marks_only_its_own_reminder_read(client) -> None:
+    headers, _ = await fresh_user(client, "chk")
+    plan = await activate_plan(client, headers)
+    today = date.today().isoformat()
+    today_tasks = [item for item in plan["tasks"] if item["scheduled_date"] == today]
+    assert len(today_tasks) > 1
+
+    assert len(await task_due_reminders(client, headers)) == len(today_tasks)
+
+    done = today_task_id(plan)
+    response = await client.post(f"/api/v1/tasks/{done}/checkins", json={"status": "completed"}, headers=headers)
+    assert response.status_code == 200, response.text
+
+    # 访问提醒列表时 sync 会把已完成任务的待完成提醒标已读
+    items = (await client.get("/api/v1/reminders", headers=headers)).json()["data"]
+    by_task = {item["related_object_id"]: item for item in items if item["notification_type"] == "task_due"}
+    assert by_task[done]["read_at"] is not None
+    for task in today_tasks:
+        if task["id"] != done:
+            assert by_task[task["id"]]["read_at"] is None
+
+    again = (await client.get("/api/v1/reminders", headers=headers)).json()["data"]
+    again_row = next(item for item in again if item["related_object_id"] == done)
+    assert again_row["read_at"] == by_task[done]["read_at"]
+
+
+async def test_sync_does_not_touch_other_user_reminder(client, session) -> None:
+    headers, _ = await fresh_user(client, "chk")
+    plan = await activate_plan(client, headers)
+
+    _, other_username = await fresh_user(client, "oth")
+    other_id = await session.scalar(select(User.id).where(User.username == other_username))
+    session.add(
+        Notification(
+            user_id=other_id,
+            notification_type="task_due",
+            title="他人提醒",
+            content="不该被本用户的同步动到",
+            dedup_key="task_due:other:manual",
+        )
+    )
+    await session.commit()
+
+    await client.post(f"/api/v1/tasks/{today_task_id(plan)}/checkins", json={"status": "completed"}, headers=headers)
+    await client.get("/api/v1/reminders", headers=headers)
+
+    row = await session.scalar(select(Notification).where(Notification.dedup_key == "task_due:other:manual"))
+    assert row.read_at is None
