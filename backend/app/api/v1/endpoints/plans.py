@@ -10,7 +10,7 @@ from app.core.exceptions import Conflict, IllegalPlan
 from app.core.response import ok
 from app.db.models import User
 from app.schemas.plan import CheckinIn, PlanAdjustIn, PlanApproveIn, PlanGenerateIn, PlanShiftIn, TaskPatchIn
-from app.services import assessment_service, plan_service
+from app.services import assessment_service, plan_service, tracking_service
 from app.tools import plan_validator
 
 router = APIRouter(tags=["plan"])
@@ -108,6 +108,17 @@ async def cancel_plan(
 ):
     await plan_service.cancel(session, user.id, plan_id)
     return ok(request, None, "计划已取消")
+
+
+@router.post("/plans/{plan_id}/report")
+async def plan_tracking_report(
+    plan_id: UUID,
+    request: Request,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(db_session),
+):
+    detail = await tracking_service.generate_report(session, user.id, plan_id)
+    return ok(request, detail)
 
 
 @router.get("/plans/{plan_id}/versions")

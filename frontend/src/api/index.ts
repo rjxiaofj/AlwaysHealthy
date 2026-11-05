@@ -103,6 +103,7 @@ export const trackingApi = {
 export const reportApi = {
   list: () => api<ReportSummary[]>('/reports'),
   detail: (id: string) => api<ReportDetail>(`/reports/${id}`),
+  createTracking: (planId: string) => api<ReportDetail>(`/plans/${planId}/report`, { body: {} }),
   exportUrl: (id: string) => `${window.location.origin}/api/v1/reports/${id}/export`,
 }
 

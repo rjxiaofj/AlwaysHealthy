@@ -54,6 +54,15 @@ async def reports_of(session: AsyncSession, user_id: UUID) -> list[HealthReport]
     return list(rows)
 
 
+async def report_of_summary(session: AsyncSession, user_id: UUID, summary_id: UUID) -> HealthReport | None:
+    return await session.scalar(
+        select(HealthReport).where(
+            HealthReport.user_id == user_id,
+            HealthReport.tracking_summary_id == summary_id,
+        )
+    )
+
+
 async def report_of(session: AsyncSession, user_id: UUID, report_id: UUID) -> HealthReport | None:
     return await session.scalar(
         select(HealthReport).where(HealthReport.id == report_id, HealthReport.user_id == user_id)

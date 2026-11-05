@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { assessmentApi, planApi, trackingApi } from '@/api'
+import { assessmentApi, planApi, reportApi, trackingApi } from '@/api'
 import type { Plan, PlanSummary, Task, TrackingSummary } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
 import { useToastStore } from '@/stores/toast'
@@ -27,6 +27,7 @@ const editTime = ref('')
 const editReminder = ref(true)
 const reassessReason = ref('')
 const reassessing = ref(false)
+const reporting = ref(false)
 
 const today = new Date().toISOString().slice(0, 10)
 
@@ -182,6 +183,20 @@ async function reassess() {
     toast.error(error instanceof Error ? error.message : '重新评估失败')
   } finally {
     reassessing.value = false
+  }
+}
+
+async function createTrackingReport() {
+  if (!selected.value) return
+  reporting.value = true
+  try {
+    const report = await reportApi.createTracking(selected.value.id)
+    toast.success('本周期报告已生成')
+    router.push(`/reports/${report.id}`)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : '生成报告失败')
+  } finally {
+    reporting.value = false
   }
 }
 
@@ -404,12 +419,20 @@ onMounted(() => load())
               <label class="label" for="reassess">重新评估的原因</label>
               <input id="reassess" v-model="reassessReason" class="field" placeholder="例如：一个周期做完了，想看看指标有没有变化" />
             </div>
+            <button
+              v-if="selected.status === 'completed'"
+              class="btn btn-ghost"
+              :disabled="reporting"
+              @click="createTrackingReport"
+            >
+              {{ reporting ? '生成中' : '生成本周期报告' }}
+            </button>
             <button class="btn btn-primary" :disabled="reassessing" @click="reassess">
               {{ reassessing ? '评估中' : '基于当前档案重新评估' }}
             </button>
           </div>
           <p class="mt-2 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
-            会读取你现在的档案与指标生成新评估，历史评估、报告与这个周期的打卡记录都保留
+            报告含完成率与指标变化，生成后在个人中心的报告列表里可以回看与导出；历史评估、报告与这个周期的打卡记录都保留
           </p>
         </div>
 

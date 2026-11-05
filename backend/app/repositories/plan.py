@@ -125,11 +125,16 @@ async def feedbacks_between(session: AsyncSession, user_id: UUID, start: date, e
     return [row for row in rows if start <= row.recorded_at.date() <= end]
 
 
-async def latest_summary(session: AsyncSession, user_id: UUID, plan_id: UUID) -> TrackingSummary | None:
+async def summary_of_period(
+    session: AsyncSession, user_id: UUID, plan_id: UUID, period_end: date
+) -> TrackingSummary | None:
+    """按计划与周期结束日取总结。报告幂等靠这个键，不按创建时间取最新。"""
     return await session.scalar(
-        select(TrackingSummary)
-        .where(TrackingSummary.user_id == user_id, TrackingSummary.plan_id == plan_id)
-        .order_by(TrackingSummary.created_at.desc())
+        select(TrackingSummary).where(
+            TrackingSummary.user_id == user_id,
+            TrackingSummary.plan_id == plan_id,
+            TrackingSummary.period_end == period_end,
+        )
     )
 
 

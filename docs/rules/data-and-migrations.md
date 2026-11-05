@@ -32,6 +32,14 @@
 - 同一编码在一份报告里出现多次时按原文位置取最靠前的一条，其余留给用户看原文自行判断。
 - 重复确认同一份资料不会产生重复记录，测量时间取文件上传时刻，去重点在 `file_service.apply_extracted`。
 
+## 周期总结与阶段报告
+
+- `tracking_summaries` 按 `(plan_id, period_end)` 唯一。一个计划的一个周期只留一份总结，重复生成走已有记录。
+- 只有周期结束日不晚于今天的计划才允许生成报告。周期没结束就算完成率，数字会误导人。
+- `cancelled`、`pending_review`、`superseded` 的计划不生成周期报告，没有可解释的执行周期。
+- 报告内容由 `app/agents/report.py::build_tracking_report` 生成，落 `health_reports.content_snapshot`，`report_type=tracking`，`tracking_summary_id` 指向总结行。
+- 完成率口径与页面一致，都走 `tracking_service.summary`，不另算一套。
+
 ## 迁移
 
 - 所有结构变更走 Alembic，`backend/migrations/versions`。

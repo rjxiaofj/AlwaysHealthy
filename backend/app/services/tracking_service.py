@@ -1,18 +1,22 @@
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFound
+from app.agents.report import build_tracking_report
+from app.core.exceptions import Conflict, NotFound
 from app.core.logging import get_logger
 from app.core.timeutil import as_utc
-from app.db.models import HealthFeedbackRecord, HealthMetricRecord, PlanTask
+from app.db.models import HealthFeedbackRecord, HealthMetricRecord, PlanTask, TrackingSummary
 from app.repositories import chat as chat_repo
 from app.repositories import health as health_repo
 from app.repositories import plan as plan_repo
 from app.schemas.tracking import MetricIn, TrendOut, TrendPoint
+from app.services import report_service
 from app.tools.metrics import METRIC_DEFS
 
 log = get_logger(__name__)
@@ -149,6 +153,57 @@ async def reassessment_request(session: AsyncSession, user_id: UUID, reason: str
     )
     await session.commit()
     log.info("reassessment requested user=%s reason=%s", user_id, reason[:60])
+
+
+async def generate_report(session: AsyncSession, user_id: UUID, plan_id: UUID) -> dict[str, Any]:
+    """把周期总结落库并生成阶段跟踪报告。同一计划的同一周期只出一份。"""
+    plan = await plan_repo.plan_of(session, user_id, plan_id)
+    if plan is None:
+        raise NotFound("计划不存在")
+    if plan.status not in ("active", "completed"):
+        raise Conflict("当前计划状态不能生成周期报告")
+
+    today = date.today()
+    if plan.end_date > today:
+        raise Conflict(f"周期到 {plan.end_date} 才结束，现在出报告统计不完整")
+
+    existing = await plan_repo.summary_of_period(session, user_id, plan.id, plan.end_date)
+    if existing is not None:
+        report = await chat_repo.report_of_summary(session, user_id, existing.id)
+        if report is not None:
+            return await report_service.detail(session, user_id, report.id)
+
+    data = await summary(session, user_id, plan.id)
+    row = TrackingSummary(
+        user_id=user_id,
+        plan_id=plan.id,
+        period_start=data["period_start"],
+        period_end=plan.end_date,
+        completion_rate=Decimal(str(data["completion_rate"])),
+        metric_summary={"metrics": [item.model_dump(mode="json") for item in data["metrics"]]},
+        trend_summary={"notes": data["notes"]},
+    )
+    session.add(row)
+    try:
+        await session.flush()
+    except IntegrityError:
+        # 双击并发时另一边已经写了同一周期，回滚后按已有记录返回
+        await session.rollback()
+        existing = await plan_repo.summary_of_period(session, user_id, plan_id, plan.end_date)
+        report = await chat_repo.report_of_summary(session, user_id, existing.id) if existing else None
+        if report is None:
+            raise Conflict("周期报告正在生成，刷新后再看")
+        return await report_service.detail(session, user_id, report.id)
+
+    payload = build_tracking_report(data, plan.title)
+    report = await report_service.save_report(
+        session,
+        user_id,
+        payload=payload,
+        assessment_id=None,
+        tracking_summary_id=row.id,
+    )
+    return await report_service.detail(session, user_id, report.id)
 
 
 async def today_tasks(session: AsyncSession, user_id: UUID) -> list[dict[str, Any]]:

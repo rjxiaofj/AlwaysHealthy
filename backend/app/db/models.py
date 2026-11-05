@@ -262,6 +262,7 @@ class HealthFeedbackRecord(Base):
 
 class TrackingSummary(Base):
     __tablename__ = "tracking_summaries"
+    __table_args__ = (UniqueConstraint("plan_id", "period_end", name="uq_summary_per_plan_period"),)
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
