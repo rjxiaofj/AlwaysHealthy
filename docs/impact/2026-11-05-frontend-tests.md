@@ -36,9 +36,10 @@
 
 ## 验证
 
-- `npm test`：2 个文件 13 项通过。
+- `npm test`：2 个文件 16 项通过。
 - `npx vue-tsc --noEmit`：无输出，spec 文件一并类型检查通过。
 - `npm run build`：产物与改动前一致，`*.spec.ts` 未进包。
+- 变异验证：去掉 `refreshAccess` 里的 `if (!refreshTask)` 去重，并发两条用例分别报 `expected 2 to be 1`；去掉 `finally` 里的 `refreshTask = null`，「刷新成功后归零」那条连同另外 4 项失败。两次变异后源码均已复原，`git diff` 为空。这一步是为了确认新用例不是「怎么写都绿」。
 
 ## 遗留
 

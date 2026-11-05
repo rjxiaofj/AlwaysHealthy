@@ -131,3 +131,76 @@ describe('api 请求封装', () => {
     expect(error.message).toBe('请求失败 502')
   })
 })
+
+describe('令牌刷新的并发合并', () => {
+  // 布局与页面会同时发请求，令牌过期时它们会同时拿到 401。refreshTask 是模块级变量，
+  // 靠它把这几路合并成一次 /auth/refresh，不然刷新接口会被打成并发调用、后到的那次把前一次作废
+  function routeByAuthHeader(onRefresh: () => FakeResponse) {
+    return async (input: string, init: { headers?: Record<string, string> }) => {
+      if (String(input).includes('/auth/refresh')) return onRefresh()
+      if (init.headers?.Authorization === 'Bearer old') return reply(401, envelope(null, 'AUTH_UNAUTHORIZED'))
+      return reply(200, envelope({ url: String(input) }))
+    }
+  }
+
+  it('两个请求同时 401 时只刷新一次，各自重放', async () => {
+    tokens.save(tokenPayload('old', 'r1'))
+    let refreshCount = 0
+    fetchMock.mockImplementation(
+      routeByAuthHeader(() => {
+        refreshCount += 1
+        return reply(200, envelope(tokenPayload('new', 'r2')))
+      }),
+    )
+
+    const [alpha, beta] = await Promise.all([api<{ url: string }>('/alpha'), api<{ url: string }>('/beta')])
+
+    expect(refreshCount).toBe(1)
+    expect(alpha.url).toContain('/alpha')
+    expect(beta.url).toContain('/beta')
+    expect(tokens.access).toBe('new')
+    // 2 次原请求 + 1 次刷新 + 2 次重放
+    expect(fetchMock).toHaveBeenCalledTimes(5)
+  })
+
+  it('刷新失败时并发请求都失败，不会各自再刷一次', async () => {
+    tokens.save(tokenPayload('old', 'r1'))
+    let refreshCount = 0
+    fetchMock.mockImplementation(
+      routeByAuthHeader(() => {
+        refreshCount += 1
+        return reply(401, envelope(null, 'AUTH_UNAUTHORIZED'))
+      }),
+    )
+
+    const results = await Promise.allSettled([api('/alpha'), api('/beta')])
+
+    expect(refreshCount).toBe(1)
+    expect(results.map((item) => item.status)).toEqual(['rejected', 'rejected'])
+    expect(tokens.access).toBe('')
+    expect(tokens.refresh).toBe('')
+    // 刷新失败后不重放，只有 2 次原请求与 1 次刷新
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('刷新成功后 refreshTask 归零，令牌再次过期仍能刷新', async () => {
+    tokens.save(tokenPayload('old', 'r1'))
+    let refreshCount = 0
+    fetchMock.mockImplementation(
+      routeByAuthHeader(() => {
+        refreshCount += 1
+        return reply(200, envelope(tokenPayload(`new-${refreshCount}`, 'r1')))
+      }),
+    )
+
+    await api('/alpha')
+    expect(refreshCount).toBe(1)
+
+    // 模拟令牌再次过期：本地访问令牌回退到旧值
+    tokens.save(tokenPayload('old', 'r1'))
+    await api('/beta')
+
+    expect(refreshCount).toBe(2)
+    expect(tokens.access).toBe('new-2')
+  })
+})

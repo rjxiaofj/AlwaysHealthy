@@ -372,8 +372,15 @@
 | FT-11 | 三条提醒两条未读，标已读其中一条 | 未读数 2 变 1，列表行 `read_at` 就地更新 | 符合 | 无 |
 | FT-12 | 标已读接口报错 | 本地状态不动，异常向上抛 | 符合，未读数仍 2 | 无 |
 | FT-13 | 标不存在的 id | 不报错，未读数不变 | 符合 | 无 |
+| FT-14 | 两个请求同时收到 401 | 只调一次 `/auth/refresh`，各自重放 | 符合，刷新 1 次、fetch 5 次 | 无 |
+| FT-15 | 并发 401 且刷新接口也 401 | 两路都失败，刷新只 1 次且不重放 | 符合，fetch 3 次，令牌清空 | 无 |
+| FT-16 | 刷新成功后令牌再次过期 | 能再刷新一次，不被上次的 refreshTask 卡住 | 符合，第二次刷新后令牌为 new-2 | 无 |
+| FT-17 | 变异：去掉 `if (!refreshTask)` 去重 | FT-14 与 FT-15 应失败 | 两项均失败，`expected 2 to be 1` | frontend/src/api/client.ts::refreshAccess |
+| FT-18 | 变异：`finally` 里不把 `refreshTask` 归零 | FT-16 应失败 | 失败，另有 4 项连带失败 | frontend/src/api/client.ts::refreshAccess |
 
-前端此前只有类型检查与构建两道静态关。`client.ts` 是全站唯一出口，`reminders` 的 `inflight` 合并只写在注释里，两条约束都没有测试守着。初版 spec 用 `tokens.save({...} as never)` 绕过缺字段，等于把「调用方少传字段」这个真实风险静默掉，改成完整 `TokenPayload` 工厂。`reminders` 的 `inflight` 是模块级变量，用例之间会残留，每个用例前 `vi.resetModules()` 重新 import。`npm test` 13 项通过，`vue-tsc` 与 `vite build` 均无变化。
+前端此前只有类型检查与构建两道静态关。`client.ts` 是全站唯一出口，`reminders` 的 `inflight` 合并只写在注释里，两条约束都没有测试守着。初版 spec 用 `tokens.save({...} as never)` 绕过缺字段，等于把「调用方少传字段」这个真实风险静默掉，改成完整 `TokenPayload` 工厂。`reminders` 的 `inflight` 是模块级变量，用例之间会残留，每个用例前 `vi.resetModules()` 重新 import。`npm test` 16 项通过，`vue-tsc` 与 `vite build` 均无变化。
+
+并发刷新这组用例做过变异验证：去掉 `if (!refreshTask)` 去重，FT-14 与 FT-15 均报 `expected 2 to be 1`；把 `finally` 里的 `refreshTask = null` 去掉，FT-16 失败并连带 4 项失败。两处源码改动均已复原，`git diff` 为空。
 
 ## 已知取舍
 
