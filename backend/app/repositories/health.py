@@ -77,10 +77,11 @@ def _counting_for_assessment(row: HealthMetricRecord) -> bool:
     """设备读数只有标记 verified 才进评估快照。
 
     否则第一次拉取手环就会把估算心率替换掉用户手动录入的血压记录。
+    判断只看 quality_status 列，不看 measurement_context，避免两份真相。
     """
     if row.source_type != SOURCE_WEARABLE:
         return True
-    return (row.measurement_context or {}).get("quality_status") == QUALITY_VERIFIED
+    return row.quality_status == QUALITY_VERIFIED
 
 
 async def assessment_of(session: AsyncSession, user_id: UUID, assessment_id: UUID) -> RiskAssessment | None:

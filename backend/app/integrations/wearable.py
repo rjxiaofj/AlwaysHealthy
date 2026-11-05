@@ -18,10 +18,14 @@ from app.core.timeutil import as_utc
 from app.db.models import HealthMetricRecord
 from app.tools.metrics import METRIC_DEFS
 
+QUALITY_VALID = "valid"
 QUALITY_VERIFIED = "verified"
 QUALITY_PENDING = "pending"
 QUALITY_REJECTED = "rejected"
+# 设备能声明的三态。valid 留给人工录入与确认后的体检解析结果，
+# 设备读数不该自称可信，只能由核验流程改成 verified
 QUALITY_STATUSES = (QUALITY_VERIFIED, QUALITY_PENDING, QUALITY_REJECTED)
+ALL_QUALITY_STATUSES = (QUALITY_VALID, *QUALITY_STATUSES)
 
 SOURCE_WEARABLE = "wearable"
 
@@ -101,9 +105,10 @@ async def ingest(session: AsyncSession, user_id: UUID, adapter: WearableDataAdap
                 value=item.value,
                 unit=item.unit,
                 measured_at=item.measured_at,
+                # 质量状态只写列，context 留设备信息。两份真相迟早会对不上
+                quality_status=item.quality_status,
                 measurement_context={
                     "device_type": item.device_type,
-                    "quality_status": item.quality_status,
                     "source": item.source,
                 },
                 source_type=SOURCE_WEARABLE,

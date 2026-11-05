@@ -8,10 +8,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.report import build_tracking_report
-from app.core.exceptions import Conflict, NotFound
+from app.core.exceptions import Conflict, InvalidHealthData, NotFound
 from app.core.logging import get_logger
 from app.core.timeutil import as_utc
 from app.db.models import HealthFeedbackRecord, HealthMetricRecord, PlanTask, TrackingSummary
+from app.integrations.wearable import ALL_QUALITY_STATUSES, QUALITY_VALID
 from app.repositories import chat as chat_repo
 from app.repositories import health as health_repo
 from app.repositories import plan as plan_repo
@@ -25,12 +26,17 @@ log = get_logger(__name__)
 async def add_metric(session: AsyncSession, user_id: UUID, payload: MetricIn) -> HealthMetricRecord:
     # 时间有效性在 MetricIn 里校验，这里只负责落库
     definition = METRIC_DEFS[payload.metric_code]
+    quality = payload.context.get("quality_status") or QUALITY_VALID
+    # context 是请求体里能传的字段，不校验就等于允许往状态列写任意字符串
+    if quality not in ALL_QUALITY_STATUSES:
+        raise InvalidHealthData("指标质量状态不合法")
     record = HealthMetricRecord(
         user_id=user_id,
         metric_code=payload.metric_code,
         value=payload.value,
         unit=definition.unit,
         measured_at=payload.measured_at,
+        quality_status=quality,
         measurement_context=payload.context,
         source_type=payload.context.get("source_type", "manual"),
     )
