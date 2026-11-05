@@ -53,6 +53,9 @@ async def save_upload(session: AsyncSession, user_id: UUID, upload: UploadFile) 
         mime_type=expected_mime,
         file_size=len(content),
         checksum=hashlib.sha256(content).hexdigest(),
+        # 上面对扩展名、大小、文件头都验过了，落库的就是通过准入的文件。
+        # 这里只做类型准入，不做病毒扫描，列值不能写 verified 之类让别人误以为杀过毒
+        admission_status="passed",
         parse_status="pending",
     )
     session.add(asset)

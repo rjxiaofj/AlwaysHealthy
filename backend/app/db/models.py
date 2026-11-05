@@ -397,7 +397,8 @@ class FileAsset(Base):
     mime_type: Mapped[str] = mapped_column(String(64))
     file_size: Mapped[int] = mapped_column(BigInteger)
     checksum: Mapped[str] = mapped_column(String(64))
-    scan_status: Mapped[str] = mapped_column(String(16), default="skipped")
+    # 入库前的准入校验结果：扩展名、大小与文件头。不做病毒扫描
+    admission_status: Mapped[str] = mapped_column(String(16), default="passed")
     parse_status: Mapped[str] = mapped_column(String(16), default="pending")
     # 解析出的候选指标，用户确认前不进指标表
     parsed_payload: Mapped[dict[str, Any] | None] = mapped_column(Json)

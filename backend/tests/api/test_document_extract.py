@@ -4,7 +4,7 @@ import uuid
 from pypdf import PdfWriter
 from sqlalchemy import select
 
-from app.db.models import FileAsset, HealthMetricRecord
+from app.db.models import FileAsset, HealthMetricRecord, User
 
 
 def blank_pdf() -> bytes:
@@ -98,3 +98,21 @@ async def test_apply_writes_metrics_and_is_idempotent(client, auth, session) -> 
     assert len(records) == 2
     assert {item.metric_code for item in records} == {"systolic_bp", "diastolic_bp"}
     assert records[0].measurement_context["file_id"] == str(file_id)
+
+
+async def test_upload_records_admission_status(client, auth, session) -> None:
+    data = await upload(client, auth)
+    asset = await session.get(FileAsset, uuid.UUID(data["id"]))
+    assert asset is not None
+    assert asset.admission_status == "passed"
+
+
+async def test_upload_with_fake_signature_is_rejected(client, auth, session) -> None:
+    files = {"file": ("report.pdf", b"not a real pdf", "application/pdf")}
+    response = await client.post("/api/v1/profiles/me/documents", files=files, headers=auth)
+    assert response.status_code == 400
+    assert response.json()["code"] == "FILE_REJECTED"
+
+    user_id = await session.scalar(select(User.id).where(User.username == auth["username"]))
+    rows = await session.scalars(select(FileAsset).where(FileAsset.user_id == user_id))
+    assert list(rows) == []
