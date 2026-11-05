@@ -47,4 +47,14 @@
 - 未登录访问任意业务接口，应返回 401 且 code 为 AUTH_UNAUTHORIZED。
 - 过期 Access Token 应触发一次刷新，刷新失败后清理本地令牌。
 
-对应自动化用例：`tests/api/test_auth.py`、`tests/regression/test_data_scope.py`。
+## 前端会话失效
+
+令牌在浏览器侧的收尾放在 `api/client.ts` 一处，别在各页面各写一份：
+
+- 401 先尝试刷新并重放一次，失败才认为会话结束。并发的 401 由模块级 `refreshTask` 合并成一次 `/auth/refresh`。
+- 只在**这次请求带了 `Authorization`** 时才判定会话过期。登录接口密码错也是 401，那次请求不带令牌，不加这个判断会把刚填的用户名冲掉、还弹一条「登录已过期」。
+- 判定过期后调 `setSessionExpiredHandler` 注册的回调（`main.ts` 里注册，跳登录页并把当前路径塞进 `redirect`），同时清令牌。回调里自己去重：布局和页面会同时拿到 401。
+- 通知开关在 `tokens.save()` 时复位，否则退出再登录后第二次过期不会再跳。
+- 登录页的 `redirect` 只接受站内绝对路径（`utils/redirect.ts`）。`//evil.com` 会被浏览器当成协议相对地址跳到外站，数组形态则让 `router.push` 行为不可预期。
+
+对应自动化用例：`tests/api/test_auth.py`、`tests/regression/test_data_scope.py`、`src/api/client.spec.ts`、`src/utils/redirect.spec.ts`。

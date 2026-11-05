@@ -28,7 +28,9 @@ async function logout() {
 }
 
 onMounted(async () => {
-  await auth.ensureUser()
+  // 会话过期时 ensureUser 会抛，跳登录页的事交给 api 层的过期回调，
+  // 这里不接住的话就是一个没人处理的 Promise rejection，它后面的提醒也就拉不到了
+  await auth.ensureUser().catch(() => undefined)
   reminders.load().catch(() => undefined)
 })
 </script>

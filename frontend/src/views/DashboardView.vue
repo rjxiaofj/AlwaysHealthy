@@ -52,6 +52,10 @@ async function load() {
     activeMetric.value = trendList.length ? trendList[0].metric_code : ''
     const active = plans.find((item) => item.status === 'active') || plans[0]
     plan.value = active ? await planApi.detail(active.id) : null
+  } catch (error) {
+    // 首屏几路请求里只要有没兜住的，整个 load 就会挂在这里。
+    // 不提示的话页面只剩几个空状态，看着像「我什么都没有」，其实是没读出来
+    toast.error(error instanceof Error ? error.message : '读取首页数据失败')
   } finally {
     loading.value = false
   }

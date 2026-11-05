@@ -496,6 +496,23 @@
 
 `useToday()` 是模块级单例，三十秒对一次 `localToday()`，另接 `visibilitychange` 对齐（后台标签页定时器会被节流）。引用计数控制启停，第一个挂载启动、最后一个卸载停止。定时器对齐到零点整的收益只有半分钟，没做。
 
+## 2026-11-05 登录态过期与首屏读失败
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| SE-01 | 带令牌 401，`/auth/refresh` 也 401 | 回调调 1 次，两个令牌清空 | 改动前只清令牌不通知，`AppLayout` 的 `ensureUser` 抛出成未处理拒绝，后面的 `reminders.load()` 不执行 | api/client.ts::api、layouts/AppLayout.vue |
+| SE-02 | 三个请求同时过期 | 回调只调 1 次 | 改动前一个请求弹一条，布局加页面能叠一屏 | api/client.ts::notifySessionExpired |
+| SE-03 | 登录接口自己返回 401（密码错，请求不带令牌） | 回调不调 | 靠 `headers.Authorization` 判断，否则密码错一次就被当成过期、刚填的用户名被冲掉 | LoginView 调用方 |
+| SE-04 | 刷新成功但重放仍 401 | 回调调 1 次 | 符合 | 无 |
+| SE-05 | 重新登录（`tokens.save`）后再次过期 | 回调能再调，累计 2 次 | 一次性开关在 `tokens.save()` 里复位 | api/client.ts::tokens.save |
+| SE-06 | 首页 `Promise.all` 里任一路挂掉 | 弹提示说读失败 | 改动前只有 `finally` 没有 `catch`，页面只剩「还没有评估结果」「还没有指标记录」这类空状态，文案在说「你没填」 | DashboardView.load、TrendsView.load |
+| RD-01 | `?redirect=/plans` | 跳 `/plans` | 符合 | 无 |
+| RD-02 | `?redirect=//evil.com` | 回首页 | 改动前 `router.push('//evil.com')`，浏览器当协议相对地址跳外站 | LoginView.submit |
+| RD-03 | `?redirect=https://evil.com` 或 `javascript:` 开头 | 回首页 | 改动前原样进路由 | 同上 |
+| RD-04 | 参数出现多次（vue-router 给数组） | 取第一个 | 改动前 `router.push(数组)` 行为不可预期 | 同上 |
+
+会话过期的通知走回调注册（`setSessionExpiredHandler`），不让 api 层 `import router` 造成环。`stores/auth.ts` 里没人用的 `loggedIn` 一并删掉：它读的是 `localStorage`，不是响应式数据，这个 computed 没有依赖，算一次就永久缓存，真拿来当登录态用会在登录后一直显示未登录。
+
 ## 已知取舍
 
 1. 知识检索默认走关键词通道。BGE-M3 与 Chroma 的代码保留在 `app/integrations/chroma_client.py`，需要安装 torch 与 chromadb 并下载模型权重后把 `EMBEDDING_BACKEND` 切到 bge。两套索引独立，不混用向量。
@@ -516,5 +533,6 @@
 7. `~/.docker/daemon.json` 里加的 `registry-mirrors` 已被 Docker Desktop 覆盖回默认，现在文件里只剩 `builder` 与 `experimental`，`docker info` 没有 Mirrors 项。镜像是本地构建，拉取不受影响，换机部署前要在 Docker Desktop 设置里重新加。
 8. 资料解析的规则按常见检验单写法覆盖，手头没有真实报告样本。真实排版的字段名变体、跨页表格、竖排文字都还没验过，拿到样本后要补规则与用例。
 9. 容器实库上跑 `alembic check` 会报 LangGraph checkpointer 的四张表（`checkpoints`、`checkpoint_writes`、`checkpoint_blobs`、`checkpoint_migrations`）是「待删除」，因为这几张表由 checkpointer 自己建、不在模型里。这是噪音，不是漏迁移。空库上跑 check 才是可比对的信号。
-10. 前端测试覆盖 `api/client.ts`、`stores/reminders.ts`、`views/planLogic.ts`、`views/profileLogic.ts`、`utils/datetime.ts`、`utils/today.ts`、`utils/keyboard.ts`，组件本身仍然没有渲染测试，也没配覆盖率阈值。判定与请求体拼装这类分支已经抽成纯函数并覆盖；组件最依赖真实接口形状，单测收益低于接口契约测试，留到接口稳定后再补。
+10. 前端测试覆盖 `api/client.ts`、`stores/reminders.ts`、`views/planLogic.ts`、`views/profileLogic.ts`、`utils/datetime.ts`、`utils/today.ts`、`utils/keyboard.ts`、`utils/redirect.ts`，组件本身仍然没有渲染测试，也没配覆盖率阈值。判定与请求体拼装这类分支已经抽成纯函数并覆盖；组件最依赖真实接口形状，单测收益低于接口契约测试，留到接口稳定后再补。
 11. 业务日期固定在东八区（`BUSINESS_TZ`），非东八区用户看到的「今天」会是东八区的今天。急救电话默认 120、文案中文，这个假设与产品定位一致；真要支持其他时区得把偏移做成配置项。
+12. 会话过期是「事后发现」：刷新由请求驱动，用户空闲着令牌过期不会主动续，要等下一次请求拿到 401 才跳转。`LoginView` 的回跳只接受站内绝对路径，底层仍靠 `router.push()` 的兜底重定向，不是唯一防线。

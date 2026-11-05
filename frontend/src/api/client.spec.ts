@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiError, api, tokens } from '@/api/client'
+import { ApiError, api, setSessionExpiredHandler, tokens } from '@/api/client'
 import type { TokenPayload } from '@/api/types'
 
 type FakeResponse = { ok: boolean; status: number; json: () => Promise<unknown> }
@@ -42,6 +42,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  setSessionExpiredHandler(null)
   localStorage.clear()
 })
 
@@ -202,5 +203,83 @@ describe('令牌刷新的并发合并', () => {
 
     expect(refreshCount).toBe(2)
     expect(tokens.access).toBe('new-2')
+  })
+})
+
+describe('会话过期的回调', () => {
+  // 令牌过期且续不上时，各页面只会拿到一串 401。若没人通知上层跳登录页，
+  // 用户看到的是一个什么都加载不出来的空壳子，还以为数据丢了
+  it('带令牌被拒且续期失败时通知一次', async () => {
+    tokens.save(tokenPayload('old', 'r1'))
+    fetchMock
+      .mockResolvedValueOnce(reply(401, envelope(null, 'AUTH_UNAUTHORIZED')))
+      .mockResolvedValueOnce(reply(401, envelope(null, 'AUTH_UNAUTHORIZED')))
+    const expired = vi.fn()
+    setSessionExpiredHandler(expired)
+
+    await expect(api('/profiles/me')).rejects.toBeInstanceOf(ApiError)
+
+    expect(expired).toHaveBeenCalledTimes(1)
+    expect(tokens.access).toBe('')
+    expect(tokens.refresh).toBe('')
+  })
+
+  it('多个请求同时过期也只通知一次', async () => {
+    tokens.save(tokenPayload('old', 'r1'))
+    fetchMock.mockImplementation(async (input: string) => {
+      if (String(input).includes('/auth/refresh')) return reply(401, envelope(null, 'AUTH_UNAUTHORIZED'))
+      return reply(401, envelope(null, 'AUTH_UNAUTHORIZED'))
+    })
+    const expired = vi.fn()
+    setSessionExpiredHandler(expired)
+
+    await Promise.allSettled([api('/alpha'), api('/beta'), api('/gamma')])
+
+    expect(expired).toHaveBeenCalledTimes(1)
+  })
+
+  it('登录接口自己返回 401 不算会话过期', async () => {
+    fetchMock.mockResolvedValueOnce(reply(401, envelope(null, 'AUTH_INVALID_CREDENTIALS')))
+    const expired = vi.fn()
+    setSessionExpiredHandler(expired)
+
+    await expect(api('/auth/login', { body: { username: 'demo', password: 'x' } })).rejects.toBeInstanceOf(ApiError)
+
+    expect(expired).not.toHaveBeenCalled()
+  })
+
+  it('续期成功后重放仍被拒也通知', async () => {
+    tokens.save(tokenPayload('old', 'r1'))
+    fetchMock
+      .mockResolvedValueOnce(reply(401, envelope(null, 'AUTH_UNAUTHORIZED')))
+      .mockResolvedValueOnce(reply(200, envelope(tokenPayload('new', 'r2'))))
+      .mockResolvedValueOnce(reply(401, envelope(null, 'AUTH_UNAUTHORIZED')))
+    const expired = vi.fn()
+    setSessionExpiredHandler(expired)
+
+    await expect(api('/profiles/me')).rejects.toBeInstanceOf(ApiError)
+
+    expect(expired).toHaveBeenCalledTimes(1)
+  })
+
+  it('重新登录后再次过期还能再通知', async () => {
+    const expired = vi.fn()
+    setSessionExpiredHandler(expired)
+
+    tokens.save(tokenPayload('old', 'r1'))
+    fetchMock
+      .mockResolvedValueOnce(reply(401, envelope(null, 'AUTH_UNAUTHORIZED')))
+      .mockResolvedValueOnce(reply(401, envelope(null, 'AUTH_UNAUTHORIZED')))
+    await expect(api('/profiles/me')).rejects.toBeInstanceOf(ApiError)
+    expect(expired).toHaveBeenCalledTimes(1)
+
+    // 重新登录会调用 tokens.save，通知开关要跟着复位
+    tokens.save(tokenPayload('again', 'r2'))
+    fetchMock
+      .mockResolvedValueOnce(reply(401, envelope(null, 'AUTH_UNAUTHORIZED')))
+      .mockResolvedValueOnce(reply(401, envelope(null, 'AUTH_UNAUTHORIZED')))
+    await expect(api('/profiles/me')).rejects.toBeInstanceOf(ApiError)
+
+    expect(expired).toHaveBeenCalledTimes(2)
   })
 })

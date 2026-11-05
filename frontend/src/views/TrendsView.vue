@@ -87,12 +87,18 @@ async function submitFeedback() {
 
 async function load() {
   const codes = metrics.map((item) => item.code)
-  const [trendList, feedbackList] = await Promise.all([
-    trackingApi.trends(codes, days.value),
-    trackingApi.feedbackList(days.value).catch(() => []),
-  ])
-  trends.value = trendList
-  feedbacks.value = feedbackList
+  try {
+    const [trendList, feedbackList] = await Promise.all([
+      trackingApi.trends(codes, days.value),
+      trackingApi.feedbackList(days.value).catch(() => []),
+    ])
+    trends.value = trendList
+    feedbacks.value = feedbackList
+  } catch (error) {
+    // 曲线读不出来时要说明白，不能只留一块「还没有指标记录」的空状态
+    toast.error(error instanceof Error ? error.message : '读取指标失败')
+    return
+  }
   if (!trends.value.find((item) => item.metric_code === active.value) && trends.value.length) {
     active.value = trends.value[0].metric_code
   }

@@ -17,6 +17,8 @@ export class ApiError extends Error {
   }
 }
 
+let expiredNotified = false
+
 export const tokens = {
   get access() {
     return localStorage.getItem(ACCESS_KEY) || ''
@@ -27,11 +29,31 @@ export const tokens = {
   save(payload: TokenPayload) {
     localStorage.setItem(ACCESS_KEY, payload.access_token)
     localStorage.setItem(REFRESH_KEY, payload.refresh_token)
+    // 换了新令牌就重新有机会报一次过期，否则退出再登录后过期不跳转
+    expiredNotified = false
   },
   clear() {
     localStorage.removeItem(ACCESS_KEY)
     localStorage.removeItem(REFRESH_KEY)
   },
+}
+
+let sessionExpiredHandler: (() => void) | null = null
+
+/**
+ * 注册「登录态彻底失效」的回调。页面侧用它把人送回登录页。
+ * 放在这里注册而不是 import router，是为了不让 api 层反向依赖路由。
+ */
+export function setSessionExpiredHandler(handler: (() => void) | null) {
+  sessionExpiredHandler = handler
+}
+
+function notifySessionExpired() {
+  // 布局和页面会同时发请求，一起拿到 401 时只报一次，别弹一屏提示
+  if (expiredNotified) return
+  expiredNotified = true
+  tokens.clear()
+  sessionExpiredHandler?.()
 }
 
 let refreshTask: Promise<boolean> | null = null
@@ -98,9 +120,14 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     body,
   })
 
-  if (response.status === 401 && options.retry !== false) {
-    const refreshed = await refreshAccess()
-    if (refreshed) return api<T>(path, { ...options, retry: false })
+  if (response.status === 401) {
+    if (options.retry !== false) {
+      const refreshed = await refreshAccess()
+      if (refreshed) return api<T>(path, { ...options, retry: false })
+    }
+    // 带着令牌还被判 401、续期又没救回来，说明会话真的失效了。
+    // 登录接口自己返回 401（密码错）不会走到这里，因为那次请求没带 Authorization
+    if (headers.Authorization) notifySessionExpired()
   }
 
   const payload = (await response.json().catch(() => null)) as ApiEnvelope<T> | null

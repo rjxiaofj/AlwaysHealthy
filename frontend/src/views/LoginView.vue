@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { ApiError } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
+import { safeRedirect } from '@/utils/redirect'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -23,8 +24,7 @@ async function submit() {
   try {
     if (mode.value === 'login') await auth.login(username.value, password.value)
     else await auth.register(username.value, password.value)
-    const redirect = (route.query.redirect as string) || '/'
-    router.push(redirect)
+    router.push(safeRedirect(route.query.redirect))
   } catch (exc) {
     error.value = exc instanceof ApiError ? exc.message : '网络异常，请稍后重试'
   }

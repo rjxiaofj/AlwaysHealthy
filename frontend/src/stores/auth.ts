@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 
 import { authApi } from '@/api'
 import { tokens } from '@/api/client'
@@ -8,7 +8,6 @@ import type { UserInfo } from '@/api/types'
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<UserInfo | null>(null)
   const pending = ref(false)
-  const loggedIn = computed(() => Boolean(tokens.access))
 
   async function login(username: string, password: string) {
     pending.value = true
@@ -49,5 +48,5 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  return { user, pending, loggedIn, login, register, ensureUser, logout }
+  return { user, pending, login, register, ensureUser, logout }
 })
