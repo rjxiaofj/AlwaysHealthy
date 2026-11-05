@@ -58,6 +58,11 @@ class PlanAdjustIn(BaseModel):
     reason: str = Field(min_length=2, max_length=200)
 
 
+class PlanShiftIn(BaseModel):
+    start_date: date
+    reason: str | None = Field(default=None, max_length=200)
+
+
 class CheckinIn(BaseModel):
     status: Literal["completed", "partial", "missed", "skipped"]
     feedback: str | None = Field(default=None, max_length=500)

@@ -78,6 +78,17 @@ async def checkin_of(session: AsyncSession, task_id: UUID, checkin_date: date) -
     )
 
 
+async def checkin_count_of_version(session: AsyncSession, version_id: UUID) -> int:
+    """按版本统计打卡数。任务 id 随版本生成，改期换版本会让旧打卡挂不到新任务上。"""
+    total = await session.scalar(
+        select(func.count())
+        .select_from(TaskCheckin)
+        .join(PlanTask, PlanTask.id == TaskCheckin.task_id)
+        .where(PlanTask.plan_version_id == version_id)
+    )
+    return int(total or 0)
+
+
 async def checkins_between(session: AsyncSession, user_id: UUID, start: date, end: date) -> list[TaskCheckin]:
     rows = await session.scalars(
         select(TaskCheckin).where(

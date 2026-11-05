@@ -15,6 +15,8 @@ const busy = ref(false)
 const duration = ref(14)
 const goal = ref('')
 const adjustReason = ref('')
+const shiftStart = ref('')
+const shiftReason = ref('')
 const feedbackTask = ref('')
 const feedbackText = ref('')
 
@@ -40,12 +42,23 @@ const activeVersion = computed(() => {
 
 const canApprove = computed(() => selected.value?.status === 'pending_review' && activeVersion.value?.status === 'draft')
 
+const canShift = computed(() => {
+  const plan = selected.value
+  if (!plan) return false
+  if (!['active', 'pending_review'].includes(plan.status)) return false
+  // 后端按版本统计打卡记录，前端只能按当前版本任务的打卡状态粗判，最终拦截以接口为准
+  if (plan.start_date < today) return false
+  return !plan.tasks.some((task) => ['completed', 'partial', 'skipped'].includes(task.checkin_status || ''))
+})
+
 async function load(preferId?: string) {
   loading.value = true
   try {
     plans.value = await planApi.list()
     const target = preferId || selected.value?.id || plans.value[0]?.id
     selected.value = target ? await planApi.detail(target) : null
+    shiftStart.value = selected.value?.start_date || ''
+    shiftReason.value = ''
     await loadSummary()
   } finally {
     loading.value = false
@@ -102,6 +115,25 @@ async function adjust() {
     await load(selected.value.id)
   } catch (error) {
     toast.error(error instanceof Error ? error.message : '调整失败')
+  } finally {
+    busy.value = false
+  }
+}
+
+async function shiftPlan() {
+  const plan = selected.value
+  if (!plan) return
+  if (!shiftStart.value || shiftStart.value === plan.start_date) {
+    toast.error('新的开始日期要与当前不同')
+    return
+  }
+  busy.value = true
+  try {
+    selected.value = await planApi.shift(plan.id, shiftStart.value, shiftReason.value.trim() || undefined)
+    toast.success('已整体改期，任务日期同步平移')
+    await load(plan.id)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : '改期失败')
   } finally {
     busy.value = false
   }
@@ -220,6 +252,21 @@ onMounted(() => load())
               <input id="reason" v-model="adjustReason" class="field" placeholder="例如：任务太多，想减少到每天两项" />
             </div>
             <button class="btn btn-ghost" :disabled="busy" @click="adjust">生成调整版本</button>
+          </div>
+
+          <div v-if="canShift" class="mt-4 flex flex-wrap items-end gap-2">
+            <div>
+              <label class="label" for="shift-start">新的开始日期</label>
+              <input id="shift-start" v-model="shiftStart" class="field w-[168px]" type="date" :min="today" />
+            </div>
+            <div class="min-w-[220px] flex-1">
+              <label class="label" for="shift-reason">改期原因</label>
+              <input id="shift-reason" v-model="shiftReason" class="field" placeholder="可留空，例如：下周出差，整体推迟三天" />
+            </div>
+            <button class="btn btn-ghost" :disabled="busy" @click="shiftPlan">整体改期</button>
+            <p class="w-full text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+              只平移开始与结束日期，任务内容不变；计划一旦开始或已有打卡就不能整体改期
+            </p>
           </div>
 
           <div class="mt-4">

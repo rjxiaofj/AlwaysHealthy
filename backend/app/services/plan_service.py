@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import Conflict, IllegalPlan, NotFound
+from app.core.exceptions import Conflict, IllegalPlan, InvalidHealthData, NotFound
 from app.db.models import (
     HealthPlan,
     HealthPlanVersion,
@@ -187,6 +187,82 @@ async def adjust(session: AsyncSession, user_id: UUID, plan_id: UUID, reason: st
             new_version_id=version.id,
             adjustment_reason=reason,
             approval_status="pending",
+        )
+    )
+    await session.commit()
+    return version
+
+
+async def shift(
+    session: AsyncSession,
+    user_id: UUID,
+    plan_id: UUID,
+    new_start: date,
+    reason: str,
+) -> HealthPlanVersion:
+    """整体平移计划日期。只在计划没开始、当前版本没打卡时允许。"""
+    plan = await repo.plan_of(session, user_id, plan_id)
+    if plan is None:
+        raise NotFound("计划不存在")
+    if plan.status not in ("active", "pending_review"):
+        raise Conflict("当前计划状态不允许改期")
+
+    today = date.today()
+    if new_start < today:
+        raise InvalidHealthData("新的开始日期不能早于今天")
+    if plan.start_date < today:
+        # 已经开始就有打卡和已完成任务，整体挪会把这些记录对到不存在的任务上
+        raise Conflict("计划已经开始，不能整体改期，请逐条调整任务日期")
+
+    delta = (new_start - plan.start_date).days
+    if delta == 0:
+        raise InvalidHealthData("新的开始日期与当前一致")
+
+    base = await repo.version_of(session, plan.id, plan.current_version_id) if plan.current_version_id else None
+    if base is not None and await repo.checkin_count_of_version(session, base.id) > 0:
+        raise Conflict("当前版本已有打卡记录，不能整体改期")
+
+    note = reason.strip()[:200] if reason and reason.strip() else f"整体改期 {delta} 天"
+    version_no = await repo.next_version_no(session, plan.id)
+    version = HealthPlanVersion(
+        plan_id=plan.id,
+        version_no=version_no,
+        change_reason=note,
+        plan_content=base.plan_content if base else {},
+        status="active",
+    )
+    session.add(version)
+    await session.flush()
+
+    if base:
+        for task in await repo.tasks_of(session, base.id):
+            session.add(
+                PlanTask(
+                    plan_version_id=version.id,
+                    title=task.title,
+                    category=task.category,
+                    description=task.description,
+                    scheduled_date=task.scheduled_date + timedelta(days=delta),
+                    scheduled_time=task.scheduled_time,
+                    frequency=task.frequency,
+                    duration_minutes=task.duration_minutes,
+                    completion_criteria=task.completion_criteria,
+                    checkin_type=task.checkin_type,
+                )
+            )
+        base.status = "superseded"
+
+    plan.start_date = new_start
+    plan.end_date = plan.end_date + timedelta(days=delta)
+    plan.current_version_id = version.id
+
+    session.add(
+        PlanAdjustmentRecord(
+            plan_id=plan.id,
+            old_version_id=base.id if base else None,
+            new_version_id=version.id,
+            adjustment_reason=note,
+            approval_status="approved",
         )
     )
     await session.commit()

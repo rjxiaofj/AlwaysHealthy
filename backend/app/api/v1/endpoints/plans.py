@@ -10,7 +10,7 @@ from app.core.exceptions import Conflict, IllegalPlan, NotFound
 from app.core.response import ok
 from app.db.models import User
 from app.repositories import plan as repo
-from app.schemas.plan import CheckinIn, PlanAdjustIn, PlanApproveIn, PlanGenerateIn, TaskPatchIn
+from app.schemas.plan import CheckinIn, PlanAdjustIn, PlanApproveIn, PlanGenerateIn, PlanShiftIn, TaskPatchIn
 from app.services import assessment_service, plan_service
 from app.tools import plan_validator
 
@@ -86,6 +86,18 @@ async def adjust_plan(
 ):
     version = await plan_service.adjust(session, user.id, plan_id, payload.reason)
     return ok(request, {"version_id": str(version.id), "version_no": version.version_no})
+
+
+@router.post("/plans/{plan_id}/shift")
+async def shift_plan(
+    plan_id: UUID,
+    payload: PlanShiftIn,
+    request: Request,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(db_session),
+):
+    await plan_service.shift(session, user.id, plan_id, payload.start_date, payload.reason or "")
+    return ok(request, await plan_service.detail(session, user.id, plan_id))
 
 
 @router.post("/plans/{plan_id}/cancel")

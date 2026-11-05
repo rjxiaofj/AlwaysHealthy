@@ -70,6 +70,8 @@ export const planApi = {
   approve: (id: string, versionId: string) =>
     api<Plan>(`/plans/${id}/approve`, { body: { version_id: versionId } }),
   adjust: (id: string, reason: string) => api<{ version_id: string }>(`/plans/${id}/adjust`, { body: { reason } }),
+  shift: (id: string, startDate: string, reason?: string) =>
+    api<Plan>(`/plans/${id}/shift`, { body: { start_date: startDate, reason } }),
   cancel: (id: string) => api<null>(`/plans/${id}/cancel`, { body: {} }),
   checkin: (taskId: string, status: string, feedback?: string) =>
     api<{ id: string; status: string }>(`/tasks/${taskId}/checkins`, { body: { status, feedback } }),
