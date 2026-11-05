@@ -252,7 +252,9 @@ body::before {
   color: var(--color-text-primary);
 }
 
-.nav-item.router-link-active {
+/* 不用 router-link-active：它是前缀匹配，首页的 `/` 是所有路径的前缀，会同时亮两个。
+   高亮由 utils/nav.ts 的 isNavActive 判断后挂 is-active */
+.nav-item.is-active {
   background: var(--color-primary);
   color: var(--color-bg);
 }

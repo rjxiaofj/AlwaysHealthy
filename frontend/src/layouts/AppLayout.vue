@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import AppIcon from '@/components/AppIcon.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useReminderStore } from '@/stores/reminders'
 import { useThemeStore } from '@/stores/theme'
+import { isNavActive } from '@/utils/nav'
 
 const auth = useAuthStore()
 const theme = useThemeStore()
 const reminders = useReminderStore()
+const route = useRoute()
 const router = useRouter()
 const drawer = ref(false)
 
@@ -47,7 +49,13 @@ onMounted(async () => {
       </div>
 
       <nav class="flex flex-1 flex-col gap-1">
-        <RouterLink v-for="item in nav" :key="item.to" :to="item.to" class="nav-item">
+        <RouterLink
+          v-for="item in nav"
+          :key="item.to"
+          :to="item.to"
+          class="nav-item"
+          :class="{ 'is-active': isNavActive(route.path, item.to) }"
+        >
           <AppIcon :name="item.icon" />
           <span>{{ item.label }}</span>
         </RouterLink>
@@ -105,6 +113,7 @@ onMounted(async () => {
               :key="item.to"
               :to="item.to"
               class="nav-item"
+              :class="{ 'is-active': isNavActive(route.path, item.to) }"
               @click="drawer = false"
             >
               <AppIcon :name="item.icon" />
