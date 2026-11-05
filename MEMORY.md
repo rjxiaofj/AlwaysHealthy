@@ -89,6 +89,42 @@
 
 汇总：`pytest` 69 项通过。
 
+## 2026-11-04 部署配置
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| D-01 | 解析 docker-compose.yml | 四个服务三个命名卷 | 符合，日志锚点复用正常 | 无 |
+| D-02 | 核对 compose 变量与环境示例 | 变量都有声明 | 符合，八个变量齐全 | 无 |
+| D-03 | 下载 Docker Desktop 安装包 | 623MB | 六分钟到 13MB，代理限速，已提供续传脚本 | E:\Docker\installer |
+| D-04 | 检查安装条件 | 可静默安装 | 当前会话非管理员，wsl.exe 被安全策略拦截 | 未执行安装 |
+| D-05 | 核对 compose 变量与环境文件 | 八个变量都能取到 | 改动前 env 带 BOM，`POSTGRES_PASSWORD` 键名被污染 | deployment/.env |
+| D-06 | 校验下载到的安装包 | 官方签名有效 | 签名 Valid，签发者 Docker Inc，版本 4.98.0.245422，623748528 字节 | 无 |
+| D-07 | 用 ParseFile 解析四个 ps1 | 语法通过 | 报错，文件是无 BOM 的 UTF-8，5.1 按 GBK 解码吃掉了引号 | deployment/scripts |
+| D-08 | 单独跑 fetch-installer.ps1 | 已下完时跳过 | 改动前会拿 416 后抛下载失败；curl 进度写 stderr 也会被 Stop 打断 | deployment/scripts/fetch-installer.ps1 |
+| D-09 | docker 不在 PATH 时跑 start.ps1 | 明确报错 | 改动前 `$LASTEXITCODE` 为空会被当成成功 | deployment/scripts/start.ps1 |
+| D-10 | prod 用默认密钥构造 Settings | 拒绝启动 | 已拦截；dev 与显式密钥两条分支正常 | 无 |
+| M-04 | 临时库执行 upgrade head | 28 张表 | 符合，27 张业务表加 alembic_version | 无 |
+| M-05 | 同一库执行 downgrade base | 只剩 alembic_version | 符合，无残留表 | 无 |
+| M-06 | 降级后再 upgrade head | 可重复升降 | 符合 | 无 |
+| M-07 | alembic check 比对模型与迁移 | 无差异 | 输出 No new upgrade operations detected | 无 |
+
+## 2026-11-05 容器实跑
+
+本机装好 Docker Desktop 4.98.0 之后第一次真起 compose，逐项记录。
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| C-01 | 拉基础镜像 | 四个都下来 | 改动前卡在 `auth.docker.io` 不可达，报 failed to fetch oauth token | 已补 pull-base-images.ps1 |
+| C-02 | 构建镜像 | 两阶段都成功 | 符合，npm ci 5 秒，vite 产出 dist，pip 装完 77 秒 | 无 |
+| C-03 | 起 redis | 绑定宿主 6379 | 改动前被本机原生 redis-server 占住，报 bind forbidden | 改成只 expose |
+| C-04 | 起 backend | 绑定宿主 8080 | 改动前被上一会话遗留的 uvicorn 占住，已停止该进程 | 无 |
+| C-05 | Postgres 上跑迁移 | 建出初始 schema | 符合，public 下 32 张表：27 业务表加 alembic_version 加 4 张检查点表 | 无 |
+| C-06 | 检查点切 postgres | setup 成功 | 日志输出 checkpointer ready backend=postgres | 无 |
+| C-07 | 容器内跑 smoke_check | 全流程通过 | 认证、档案、两段确认、35 个任务的计划、评估、报告、4 条提醒、高危拦截都走通 | 无 |
+| C-08 | 校验接口中文 | 正常 UTF-8 | 计划标题 `14天健康管理计划` 长度 9，未被破坏 | 无 |
+| C-09 | 越权访问 /health/services | 拒绝 | 普通账号返回 403 需要管理员权限 | 无 |
+| C-10 | compose 三容器健康 | 全部 healthy | backend、postgres、redis 都是 healthy | 无 |
+
 ## 已知取舍
 
 1. 知识检索默认走关键词通道。BGE-M3 与 Chroma 的代码保留在 `app/integrations/chroma_client.py`，需要安装 torch 与 chromadb 并下载模型权重后把 `EMBEDDING_BACKEND` 切到 bge。两套索引独立，不混用向量。
@@ -102,5 +138,6 @@
 2. PHQ-2 与 PHQ-9 的中文验证版本与授权条件未核实，当前只用于演示量表分级。
 3. 急救电话为配置项，默认 120，部署到其他地区必须改。
 4. BGE-M3 在本机的加载耗时与内存占用未测。向量通道代码已就位，依赖见 `backend/requirements-vector.txt`。
-5. Docker Compose 未在本机实跑，环境没有 docker 命令。镜像构建链路与健康检查只能上线时验证。
-6. Postgres 下的迁移升降级未实测，本地只跑了 sqlite。`sa.JSON().with_variant(JSONB)` 与检查点表需要在 Postgres 上再跑一次 `alembic upgrade head`。
+5. Docker Compose 已在本机实跑，三容器 healthy，冒烟通过，见 C-01 至 C-10。
+6. Postgres 上的 upgrade 已实测。downgrade 只在 sqlite 上跑过，Postgres 上没做降级，动迁移脚本前要先在一次性库上验一遍。
+7. `~/.docker/daemon.json` 里加的 `registry-mirrors` 需要重启引擎才生效，重启后确认 `docker info` 的 Mirrors 是否非空。
