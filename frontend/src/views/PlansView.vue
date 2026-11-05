@@ -50,6 +50,11 @@ const activeVersion = computed(() => {
 
 const canApprove = computed(() => selected.value?.status === 'pending_review' && activeVersion.value?.status === 'draft')
 
+// 打卡只允许 active 计划的当前版本任务，已结束或未生效的计划不该再露出打卡按钮
+const canCheckin = computed(() => selected.value?.status === 'active')
+
+const canCancel = computed(() => ['active', 'pending_review'].includes(selected.value?.status || ''))
+
 const canShift = computed(() => {
   const plan = selected.value
   if (!plan) return false
@@ -319,7 +324,7 @@ onMounted(() => load())
             </div>
             <div class="flex flex-wrap gap-2">
               <button v-if="canApprove" class="btn btn-primary" :disabled="busy" @click="approve">确认启用</button>
-              <button class="btn btn-ghost" :disabled="busy" @click="cancelPlan">取消计划</button>
+              <button v-if="canCancel" class="btn btn-ghost" :disabled="busy" @click="cancelPlan">取消计划</button>
             </div>
           </div>
 
@@ -437,16 +442,19 @@ onMounted(() => load())
                       <span class="chip" :class="task.checkin_status === 'completed' ? 'level-low' : 'level-unknown'">
                         {{ task.checkin_status === 'completed' ? '已完成' : task.checkin_status === 'partial' ? '部分完成' : '待完成' }}
                       </span>
-                      <button class="btn btn-ghost !px-2 !py-1 text-[11px]" @click="openFeedback(task)">未完成原因</button>
-                      <button
-                        v-if="!task.checkin_status"
-                        class="btn btn-ghost !px-2 !py-1 text-[11px]"
-                        @click="openReschedule(task)"
-                      >
-                        调整
-                      </button>
-                      <button class="btn btn-primary !px-3 !py-1 text-[11px]" :disabled="busy" @click="checkin(task, 'completed')">完成</button>
-                      <button class="btn btn-ghost !px-3 !py-1 text-[11px]" :disabled="busy" @click="checkin(task, 'skipped')">跳过</button>
+                      <template v-if="canCheckin">
+                        <button class="btn btn-ghost !px-2 !py-1 text-[11px]" @click="openFeedback(task)">未完成原因</button>
+                        <button
+                          v-if="!task.checkin_status"
+                          class="btn btn-ghost !px-2 !py-1 text-[11px]"
+                          @click="openReschedule(task)"
+                        >
+                          调整
+                        </button>
+                        <button class="btn btn-primary !px-3 !py-1 text-[11px]" :disabled="busy" @click="checkin(task, 'completed')">完成</button>
+                        <button class="btn btn-ghost !px-3 !py-1 text-[11px]" :disabled="busy" @click="checkin(task, 'skipped')">跳过</button>
+                      </template>
+                      <span v-else class="text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">计划不在执行中，只读</span>
                     </div>
                   </div>
                   <div v-if="rescheduleTask === task.id" class="mt-2 flex flex-wrap items-end gap-2">

@@ -6,10 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import plan as plan_agent
 from app.api.deps import current_user, db_session
-from app.core.exceptions import Conflict, IllegalPlan, NotFound
+from app.core.exceptions import Conflict, IllegalPlan
 from app.core.response import ok
 from app.db.models import User
-from app.repositories import plan as repo
 from app.schemas.plan import CheckinIn, PlanAdjustIn, PlanApproveIn, PlanGenerateIn, PlanShiftIn, TaskPatchIn
 from app.services import assessment_service, plan_service
 from app.tools import plan_validator
@@ -107,13 +106,7 @@ async def cancel_plan(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(db_session),
 ):
-    plan = await repo.plan_of(session, user.id, plan_id)
-    if plan is None:
-        raise NotFound("计划不存在")
-    if plan.status in ("completed", "superseded"):
-        raise Conflict("该计划已结束")
-    plan.status = "cancelled"
-    await session.commit()
+    await plan_service.cancel(session, user.id, plan_id)
     return ok(request, None, "计划已取消")
 
 

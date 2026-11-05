@@ -386,6 +386,17 @@ async def patch_task(session: AsyncSession, user_id: UUID, task_id: UUID, payloa
     return task
 
 
+async def cancel(session: AsyncSession, user_id: UUID, plan_id: UUID) -> None:
+    """取消计划。只改计划状态，任务与打卡记录都留着，历史还能查。"""
+    plan = await repo.plan_of(session, user_id, plan_id)
+    if plan is None:
+        raise NotFound("计划不存在")
+    if plan.status in ("completed", "superseded"):
+        raise Conflict("该计划已结束")
+    plan.status = "cancelled"
+    await session.commit()
+
+
 async def close_expired(session: AsyncSession, user_id: UUID) -> None:
     expired = await session.scalars(
         select(HealthPlan).where(
