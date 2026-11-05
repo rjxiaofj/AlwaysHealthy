@@ -16,6 +16,7 @@ from app.db.models import RefreshToken, User
 from app.repositories import chat as chat_repo
 from app.repositories import health as repo
 from app.schemas.health import LoginIn, RegisterIn, TokenOut
+from app.services import security_service
 
 
 async def _issue(session: AsyncSession, user: User) -> TokenOut:
@@ -50,15 +51,17 @@ async def login(session: AsyncSession, payload: LoginIn, request_id: str | None 
     user = await repo.get_user_by_username(session, payload.username)
     # 用户不存在与密码错误返回同一错误，避免枚举账号
     if user is None or not verify_password(payload.password, user.password_hash):
+        account = payload.username[:64]
         chat_repo.audit(
             session,
             actor_user_id=None,
             action="login",
             resource_type="user",
-            resource_id=payload.username[:64],
+            resource_id=account,
             result="fail",
             request_id=request_id,
         )
+        await security_service.note_login_failure(session, account)
         # 失败分支要单独提交，异常抛出后事务会被丢弃
         await session.commit()
         raise BadCredentials("用户名或密码不正确")

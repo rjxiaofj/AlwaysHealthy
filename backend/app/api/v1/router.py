@@ -11,6 +11,7 @@ from app.api.v1.endpoints import (
     profiles,
     reminders,
     reports,
+    security,
     tracking,
 )
 
@@ -25,6 +26,7 @@ api_router.include_router(tracking.router)
 api_router.include_router(reports.router)
 api_router.include_router(reminders.router)
 api_router.include_router(knowledge.router)
+api_router.include_router(security.router)
 
 health_router = APIRouter()
 health_router.include_router(health.router)
