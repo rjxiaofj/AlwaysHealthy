@@ -2,7 +2,12 @@ import os
 import uuid
 from pathlib import Path
 
-os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./test_alwayshealthy.db"
+# 库文件按绝对路径给，别用相对路径：从仓库根跑 pytest 时 ./test_alwayshealthy.db
+# 会落在根目录，而这里的删除语句删的是 backend 下那个，两个路径对不上就等于没清库，
+# 上一轮留下的用户名会在下一轮注册时报 409
+_DB_FILE = Path(__file__).resolve().parents[1] / "test_alwayshealthy.db"
+
+os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_DB_FILE.as_posix()}"
 os.environ["CHECKPOINTER"] = "memory"
 os.environ["ENV"] = "dev"
 os.environ["KNOWLEDGE_DIR"] = str(Path(__file__).resolve().parents[2] / "knowledge")
@@ -10,7 +15,6 @@ os.environ["STORAGE_DIR"] = "./test_storage"
 os.environ["JWT_SECRET"] = "test-secret-key-that-is-long-enough-for-hs256"
 
 # init_models 只建缺失的表，不会给已有表补列。每次测试从空库起，避免模型改了还跑旧结构
-_DB_FILE = Path(__file__).resolve().parents[1] / "test_alwayshealthy.db"
 if _DB_FILE.exists():
     _DB_FILE.unlink()
 
