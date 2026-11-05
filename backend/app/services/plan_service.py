@@ -354,9 +354,24 @@ async def checkin(session: AsyncSession, user_id: UUID, task_id: UUID, payload) 
 
 
 async def patch_task(session: AsyncSession, user_id: UUID, task_id: UUID, payload) -> PlanTask:
-    task = await repo.task_of(session, user_id, task_id)
-    if task is None:
+    # 改日期要连带校验版本与周期，先把任务连同计划取出来，只改时间与开关时也用同一份
+    found = await repo.task_with_plan(session, user_id, task_id)
+    if found is None:
         raise NotFound("任务不存在")
+    task, plan, version = found
+    if payload.scheduled_date is not None and payload.scheduled_date != task.scheduled_date:
+        if plan.current_version_id != version.id:
+            raise Conflict("旧版本任务不能再调整，请到当前版本操作")
+        if plan.status not in ("active", "pending_review"):
+            raise Conflict("当前计划状态不允许调整任务")
+        if payload.scheduled_date < date.today():
+            raise InvalidHealthData("不能把任务改到已经过去的日期")
+        if not plan.start_date <= payload.scheduled_date <= plan.end_date:
+            raise InvalidHealthData("任务日期要落在计划周期内")
+        if await repo.checkin_count_of_task(session, task.id) > 0:
+            # 打卡按任务 id 加打卡日期唯一，日期挪走会让已完成记录对到一个空日子上
+            raise Conflict("任务已有打卡记录，不能再改日期")
+        task.scheduled_date = payload.scheduled_date
     if payload.scheduled_time is not None:
         task.scheduled_time = payload.scheduled_time
     if payload.reminder_enabled is not None:

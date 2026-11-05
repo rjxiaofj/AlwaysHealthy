@@ -19,6 +19,8 @@ const shiftStart = ref('')
 const shiftReason = ref('')
 const feedbackTask = ref('')
 const feedbackText = ref('')
+const rescheduleTask = ref('')
+const rescheduleDate = ref('')
 
 const today = new Date().toISOString().slice(0, 10)
 
@@ -156,6 +158,33 @@ async function cancelPlan() {
 function openFeedback(task: Task) {
   feedbackTask.value = feedbackTask.value === task.id ? '' : task.id
   feedbackText.value = ''
+}
+
+function openReschedule(task: Task) {
+  rescheduleTask.value = rescheduleTask.value === task.id ? '' : task.id
+  rescheduleDate.value = task.scheduled_date
+}
+
+async function reschedule(task: Task) {
+  if (!rescheduleDate.value) {
+    toast.error('选择新的任务日期')
+    return
+  }
+  if (rescheduleDate.value === task.scheduled_date) {
+    toast.error('新的日期与当前一致')
+    return
+  }
+  busy.value = true
+  try {
+    await planApi.patchTask(task.id, { scheduled_date: rescheduleDate.value })
+    rescheduleTask.value = ''
+    toast.success('任务日期已调整')
+    await load(selected.value?.id)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : '改期失败')
+  } finally {
+    busy.value = false
+  }
 }
 
 async function checkin(task: Task, status: 'completed' | 'partial' | 'skipped') {
@@ -341,9 +370,35 @@ onMounted(() => load())
                         {{ task.checkin_status === 'completed' ? '已完成' : task.checkin_status === 'partial' ? '部分完成' : '待完成' }}
                       </span>
                       <button class="btn btn-ghost !px-2 !py-1 text-[11px]" @click="openFeedback(task)">未完成原因</button>
+                      <button
+                        v-if="!task.checkin_status"
+                        class="btn btn-ghost !px-2 !py-1 text-[11px]"
+                        @click="openReschedule(task)"
+                      >
+                        改日期
+                      </button>
                       <button class="btn btn-primary !px-3 !py-1 text-[11px]" :disabled="busy" @click="checkin(task, 'completed')">完成</button>
                       <button class="btn btn-ghost !px-3 !py-1 text-[11px]" :disabled="busy" @click="checkin(task, 'skipped')">跳过</button>
                     </div>
+                  </div>
+                  <div v-if="rescheduleTask === task.id" class="mt-2 flex flex-wrap items-end gap-2">
+                    <div>
+                      <label class="label" :for="`reschedule-${task.id}`">新的日期</label>
+                      <input
+                        :id="`reschedule-${task.id}`"
+                        v-model="rescheduleDate"
+                        class="field w-[168px]"
+                        type="date"
+                        :min="selected.start_date > today ? selected.start_date : today"
+                        :max="selected.end_date"
+                      />
+                    </div>
+                    <button class="btn btn-primary !py-1 text-[11px]" :disabled="busy" @click="reschedule(task)">
+                      确认改期
+                    </button>
+                    <p class="text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+                      只能在计划周期内移动，已打卡的任务不能改
+                    </p>
                   </div>
                   <div v-if="feedbackTask === task.id" class="mt-2">
                     <textarea v-model="feedbackText" class="field h-16 resize-none" placeholder="填写执行困难或原因，不会据此判断健康变差" />

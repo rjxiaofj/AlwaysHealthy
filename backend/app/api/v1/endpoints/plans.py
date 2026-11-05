@@ -170,4 +170,12 @@ async def patch_task(
     session: AsyncSession = Depends(db_session),
 ):
     task = await plan_service.patch_task(session, user.id, task_id, payload)
-    return ok(request, {"id": str(task.id), "scheduled_time": task.scheduled_time, "reminder_enabled": task.reminder_enabled})
+    return ok(
+        request,
+        {
+            "id": str(task.id),
+            "scheduled_date": task.scheduled_date,
+            "scheduled_time": task.scheduled_time,
+            "reminder_enabled": task.reminder_enabled,
+        },
+    )

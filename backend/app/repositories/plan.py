@@ -72,6 +72,24 @@ async def task_of(session: AsyncSession, user_id: UUID, task_id: UUID) -> PlanTa
     )
 
 
+async def task_with_plan(
+    session: AsyncSession, user_id: UUID, task_id: UUID
+) -> tuple[PlanTask, HealthPlan, HealthPlanVersion] | None:
+    """任务连同所属计划与版本一起取。改日期要校验版本是不是当前版本，分开查容易漏。"""
+    row = await session.execute(
+        select(PlanTask, HealthPlan, HealthPlanVersion)
+        .join(HealthPlanVersion, HealthPlanVersion.id == PlanTask.plan_version_id)
+        .join(HealthPlan, HealthPlan.id == HealthPlanVersion.plan_id)
+        .where(PlanTask.id == task_id, HealthPlan.user_id == user_id)
+    )
+    return row.first()
+
+
+async def checkin_count_of_task(session: AsyncSession, task_id: UUID) -> int:
+    total = await session.scalar(select(func.count()).select_from(TaskCheckin).where(TaskCheckin.task_id == task_id))
+    return int(total or 0)
+
+
 async def checkin_of(session: AsyncSession, task_id: UUID, checkin_date: date) -> TaskCheckin | None:
     return await session.scalar(
         select(TaskCheckin).where(TaskCheckin.task_id == task_id, TaskCheckin.checkin_date == checkin_date)

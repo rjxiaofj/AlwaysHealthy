@@ -80,5 +80,6 @@ class CheckinOut(BaseModel):
 
 
 class TaskPatchIn(BaseModel):
+    scheduled_date: date | None = None
     scheduled_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     reminder_enabled: bool | None = None

@@ -14,7 +14,6 @@ import type {
   Reminder,
   ReportDetail,
   ReportSummary,
-  Task,
   TokenPayload,
   TrackingSummary,
   Trend,
@@ -75,8 +74,14 @@ export const planApi = {
   cancel: (id: string) => api<null>(`/plans/${id}/cancel`, { body: {} }),
   checkin: (taskId: string, status: string, feedback?: string) =>
     api<{ id: string; status: string }>(`/tasks/${taskId}/checkins`, { body: { status, feedback } }),
-  patchTask: (taskId: string, payload: { scheduled_time?: string; reminder_enabled?: boolean }) =>
-    api<Task>(`/tasks/${taskId}`, { method: 'PATCH', body: payload }),
+  patchTask: (
+    taskId: string,
+    payload: { scheduled_date?: string; scheduled_time?: string; reminder_enabled?: boolean },
+  ) =>
+    api<{ id: string; scheduled_date: string; scheduled_time: string | null; reminder_enabled: boolean }>(
+      `/tasks/${taskId}`,
+      { method: 'PATCH', body: payload },
+    ),
 }
 
 export const trackingApi = {
