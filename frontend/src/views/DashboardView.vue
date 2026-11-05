@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 
 import { assessmentApi, planApi, trackingApi } from '@/api'
 import type { Assessment, Plan, Task, Trend } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
 import RiskBadge from '@/components/RiskBadge.vue'
-import TrendChart from '@/components/TrendChart.vue'
+// echarts 这一个包 466 kB，比其余所有页面加起来还大。静态引入的话新用户一进首页
+// 就要下它，哪怕一条指标都没有、只显示「还没有指标记录」。改成按需加载：
+// 模板里本来就是 v-if 有数据才渲染，没数据时这个 chunk 根本不会被请求
+const TrendChart = defineAsyncComponent(() => import('@/components/TrendChart.vue'))
 import { useAuthStore } from '@/stores/auth'
 import { useReminderStore } from '@/stores/reminders'
 import { useToastStore } from '@/stores/toast'
@@ -214,12 +217,14 @@ onMounted(load)
           </button>
         </div>
       </div>
-      <TrendChart
-        v-if="selectedTrend && selectedTrend.points.length"
-        :points="selectedTrend.points"
-        :label="selectedTrend.label"
-        :unit="selectedTrend.unit"
-      />
+      <!-- 外层留出 260px：图表按需加载的那一瞬间组件还没挂上，没有这层会看到布局塌一下 -->
+      <div v-if="selectedTrend && selectedTrend.points.length" class="min-h-[260px]">
+        <TrendChart
+          :points="selectedTrend.points"
+          :label="selectedTrend.label"
+          :unit="selectedTrend.unit"
+        />
+      </div>
       <EmptyState v-else title="还没有指标记录" description="在指标趋势页录入血压、体重或睡眠时长后生成曲线" action="录入指标" @action="$router.push('/trends')" />
     </section>
   </div>
