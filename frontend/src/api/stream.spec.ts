@@ -184,4 +184,85 @@ describe('流式请求', () => {
 
     expect(events.map((item) => item[1].content)).toEqual(['1', '2'])
   })
+
+  it('一直有数据但永远不结束，总时长到点停止等待', async () => {
+    // 空闲计时管不住这种：每 10 秒来一片，间隔远小于 45 秒，
+    // 但整条流可以无限长
+    vi.useFakeTimers()
+    tokens.save(tokenPayload('a1', 'r1'))
+    const cancel = vi.fn()
+    const encoder = new TextEncoder()
+    const abortError = () => Object.assign(new Error('aborted'), { name: 'AbortError' })
+
+    fetchMock.mockImplementationOnce(async (_url: string, init: RequestInit) => {
+      const signal = init.signal as AbortSignal
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => ({
+            read: () =>
+              new Promise((resolve, reject) => {
+                const timer = setTimeout(
+                  () => resolve({ done: false, value: encoder.encode('event: token\ndata: {"content":"字"}\n\n') }),
+                  10_000,
+                )
+                signal.addEventListener(
+                  'abort',
+                  () => {
+                    clearTimeout(timer)
+                    reject(abortError())
+                  },
+                  { once: true },
+                )
+              }),
+            cancel: async () => cancel(),
+          }),
+        },
+        text: async () => '',
+      }
+    })
+
+    const promise = streamMessage('c1', '你好', () => undefined)
+    const assertion = expect(promise).rejects.toThrow('回复超过 180 秒还没结束，已停止等待')
+    await vi.advanceTimersByTimeAsync(190_000)
+    await assertion
+
+    expect(cancel).toHaveBeenCalled()
+  })
+
+  it('用户主动取消时抛的是取消，不是超时', async () => {
+    // ChatView 靠 name === 'AbortError' 判断「是用户自己切走的」，不弹错误提示。
+    // 如果这里被包成超时文案，切页面就会莫名其妙弹一条红字
+    vi.useFakeTimers()
+    tokens.save(tokenPayload('a1', 'r1'))
+    const abortError = () => Object.assign(new Error('aborted'), { name: 'AbortError' })
+
+    fetchMock.mockImplementationOnce(async (_url: string, init: RequestInit) => {
+      const signal = init.signal as AbortSignal
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => ({
+            read: () =>
+              new Promise((_resolve, reject) => {
+                signal.addEventListener('abort', () => reject(abortError()), { once: true })
+              }),
+            cancel: async () => undefined,
+          }),
+        },
+        text: async () => '',
+      }
+    })
+
+    const controller = new AbortController()
+    const promise = streamMessage('c1', '你好', () => undefined, controller.signal)
+    const assertion = expect(promise).rejects.toMatchObject({ name: 'AbortError' })
+
+    // 还没到总时长，取消是用户发起的
+    await vi.advanceTimersByTimeAsync(5_000)
+    controller.abort()
+    await assertion
+  })
 })

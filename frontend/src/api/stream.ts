@@ -6,6 +6,14 @@ const BASE = '/api/v1'
 /** 这么久没收到任何数据就认为连接死了。健康咨询最长一次跑过二十多秒。 */
 const IDLE_TIMEOUT_MS = 45_000
 
+/**
+ * 一次请求的总时长上限。
+ *
+ * 空闲计时管不住「一直在吐字但永远吐不完」——模型卡在循环里、或者后端把
+ * 同一个事件反复推，每次间隔都不到 45 秒，前端就一直等下去。这条线兜住这种情况。
+ */
+const TOTAL_TIMEOUT_MS = 180_000
+
 export type StreamHandler = (event: string, data: Record<string, unknown>) => void
 
 class IdleTimeout extends Error {}
@@ -88,14 +96,38 @@ async function sendStream(path: string, body: unknown, signal?: AbortSignal) {
 }
 
 async function postStream(path: string, body: unknown, onEvent: StreamHandler, signal?: AbortSignal) {
-  let response = await sendStream(path, body, signal)
-  if (response.status === 401) {
-    // 和 api() 一样先续一次再重放。这层原来没有：会话过了两小时，
-    // 聊天会直接失败，而同一个页面上的其他请求都能自动续期
-    const refreshed = await refreshSession()
-    if (refreshed) response = await sendStream(path, body, signal)
+  // 总时长的实现方式是「到点就把这次请求 abort 掉」，这样连等待响应头的阶段
+  // 也一起管住了；空闲计时只看得见读 body 的等待
+  const controller = new AbortController()
+  const relayAbort = () => controller.abort()
+  if (signal) {
+    if (signal.aborted) controller.abort()
+    else signal.addEventListener('abort', relayAbort, { once: true })
   }
-  await readStream(response, onEvent)
+
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, TOTAL_TIMEOUT_MS)
+
+  try {
+    let response = await sendStream(path, body, controller.signal)
+    if (response.status === 401) {
+      // 和 api() 一样先续一次再重放。这层原来没有：会话过了两小时，
+      // 聊天会直接失败，而同一个页面上的其他请求都能自动续期
+      const refreshed = await refreshSession()
+      if (refreshed) response = await sendStream(path, body, controller.signal)
+    }
+    await readStream(response, onEvent)
+  } catch (error) {
+    // 到点主动断掉，用户看到的是原因而不是一句「网络错误」
+    if (timedOut) throw new Error(`回复超过 ${Math.round(TOTAL_TIMEOUT_MS / 1000)} 秒还没结束，已停止等待`)
+    throw error
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', relayAbort)
+  }
 }
 
 export function streamMessage(conversationId: string, content: string, onEvent: StreamHandler, signal?: AbortSignal) {
