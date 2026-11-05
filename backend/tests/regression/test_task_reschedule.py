@@ -90,3 +90,32 @@ async def test_reschedule_other_user_task_not_found(client, auth) -> None:
 
     response = await patch_date(client, other_headers, task_id, date.today() + timedelta(days=1))
     assert response.status_code == 404
+
+
+async def test_clear_task_time_with_null(client, auth) -> None:
+    plan = await activate_plan(client, auth)
+    task_id = today_task_id(plan)
+
+    set_time = await client.patch(f"/api/v1/tasks/{task_id}", json={"scheduled_time": "08:30"}, headers=auth)
+    assert set_time.status_code == 200, set_time.text
+
+    # 没有时间表示「任意时间」，清空要能真的落库，不能把请求吃掉
+    cleared = await client.patch(f"/api/v1/tasks/{task_id}", json={"scheduled_time": None}, headers=auth)
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["data"]["scheduled_time"] is None
+
+    detail = (await client.get(f"/api/v1/plans/{plan['id']}", headers=auth)).json()["data"]
+    row = next(item for item in detail["tasks"] if item["id"] == task_id)
+    assert row["scheduled_time"] is None
+
+
+async def test_omitting_time_keeps_it(client, auth) -> None:
+    plan = await activate_plan(client, auth)
+    task_id = today_task_id(plan)
+
+    await client.patch(f"/api/v1/tasks/{task_id}", json={"scheduled_time": "08:30"}, headers=auth)
+
+    # 只改提醒开关时请求里没有 scheduled_time，字段不出现就是不改
+    response = await client.patch(f"/api/v1/tasks/{task_id}", json={"reminder_enabled": False}, headers=auth)
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["scheduled_time"] == "08:30"

@@ -87,7 +87,8 @@ export const planApi = {
     api<{ id: string; status: string }>(`/tasks/${taskId}/checkins`, { body: { status, feedback } }),
   patchTask: (
     taskId: string,
-    payload: { scheduled_date?: string; scheduled_time?: string; reminder_enabled?: boolean },
+    // 时间传 null 表示清空，省略字段表示不改，两者含义不同
+    payload: { scheduled_date?: string; scheduled_time?: string | null; reminder_enabled?: boolean },
   ) =>
     api<{ id: string; scheduled_date: string; scheduled_time: string | null; reminder_enabled: boolean }>(
       `/tasks/${taskId}`,

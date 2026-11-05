@@ -382,6 +382,46 @@
 
 并发刷新这组用例做过变异验证：去掉 `if (!refreshTask)` 去重，FT-14 与 FT-15 均报 `expected 2 to be 1`；把 `finally` 里的 `refreshTask = null` 去掉，FT-16 失败并连带 4 项失败。两处源码改动均已复原，`git diff` 为空。
 
+## 2026-11-05 任务时间可以清空
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| T-08 | 已有时间的任务传 `scheduled_time=null` | 时间被清掉 | 改动前服务端用 `is not None` 判断，null 被当成没传，时间删不掉 | plan_service.patch_task |
+| T-09 | 只改提醒开关，请求体不带时间字段 | 时间保持原值 | 符合 | 无 |
+| T-10 | 前端把时间输入框清空后保存 | 请求体带 `scheduled_time: null` | 改动前 `editTime.value && ...` 让清空被判成没改，界面提示「日期、时间与提醒都没有变化」 | PlansView.reschedule |
+| T-11 | 变异：服务端改回 `is not None` | T-08 应失败 | 失败，清空后仍是 08:30 | plan_service.patch_task |
+| T-12 | 变异：前端改回「值非空才算改」 | T-10 对应单测应失败 | 失败，`expected false to be true` | views/planLogic.ts::buildTaskPatch |
+
+任务没有时间表示任意时间，所以「清空」是合法操作。语义改成看字段是否出现：不出现是不改，显式传 null 是去掉。前后端两侧都有同一个坑，前端那句 `editTime.value &&` 和 后端那句 `is not None` 都得换掉，只改一侧会得到「点保存没反应」或者「点了报没变化」。
+
+## 2026-11-05 测试库路径改成绝对路径
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| DB-01 | 从仓库根跑两次 pytest | 第二轮不受上一轮数据影响 | 改动前 `DATABASE_URL` 是 `./test_alwayshealthy.db`，实际落在仓库根；conftest 删的是 `backend/` 下那个，等于没清库，第二轮 `taskmover` 注册报 409，`other.json()['data']` 抛 TypeError | tests/conftest.py |
+| DB-02 | 修完连跑两次全量 | 两轮都 156 项通过 | 符合，库文件固定落在 `backend/test_alwayshealthy.db` | 无 |
+
+从 `backend/` 目录跑一直是好的，从仓库根跑才暴露，所以这个坑之前没被发现。凡是写死用户名的用例（`taskmover`、`shifttaker` 等六处）第二轮都会撞唯一键。
+
+## 2026-11-05 计划页判定逻辑抽成纯函数
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| PL-01 | 三天任务乱序到达 | 按日期升序分组，同日内保持原序 | 符合 | 无 |
+| PL-02 | 跨月跨年日期 | 仍按时间先后 | 符合 | 无 |
+| PL-03 | 结束日与今天同一天 | 剩 0 天 | 符合 | 无 |
+| PL-04 | 已结束、跨月、跨年边界 | 天数含负数都算对 | 符合 | 无 |
+| PL-05 | 整体改期：draft / completed / cancelled | 一律不可改 | 符合 | 无 |
+| PL-06 | 整体改期：开始日期在昨天 | 不可改 | 符合 | 无 |
+| PL-07 | 整体改期：当天开始 | 可改 | 符合 | 无 |
+| PL-08 | 整体改期：任一任务 completed / partial / skipped | 不可改 | 符合，三种都拦住 | 无 |
+| PL-09 | 重新评估：completed 不论剩几天 | 可发起 | 符合 | 无 |
+| PL-10 | 重新评估：active 剩 2 天 / 3 天 | 前者可，后者不可 | 符合 | 无 |
+| PL-11 | 待确认版本配 draft 计划 | 不算调整草稿 | 符合，否掉会取消计划而不是作废版本 | 无 |
+| PL-12 | 三个字段同时改 | 请求体三个字段都带 | 符合 | 无 |
+
+`PlansView.vue` 里六处判定与任务分组原本是内联 computed，模板与逻辑缠在一起，只能靠点页面验。抽到 `views/planLogic.ts` 后由 29 条单测守着，组件只剩取值与渲染。抽的过程里发现 T-10 那个清空时间的缺陷，纯函数化本身就是为了让这种分支能被断言。
+
 ## 已知取舍
 
 1. 知识检索默认走关键词通道。BGE-M3 与 Chroma 的代码保留在 `app/integrations/chroma_client.py`，需要安装 torch 与 chromadb 并下载模型权重后把 `EMBEDDING_BACKEND` 切到 bge。两套索引独立，不混用向量。
@@ -402,4 +442,4 @@
 7. `~/.docker/daemon.json` 里加的 `registry-mirrors` 已被 Docker Desktop 覆盖回默认，现在文件里只剩 `builder` 与 `experimental`，`docker info` 没有 Mirrors 项。镜像是本地构建，拉取不受影响，换机部署前要在 Docker Desktop 设置里重新加。
 8. 资料解析的规则按常见检验单写法覆盖，手头没有真实报告样本。真实排版的字段名变体、跨页表格、竖排文字都还没验过，拿到样本后要补规则与用例。
 9. 容器实库上跑 `alembic check` 会报 LangGraph checkpointer 的四张表（`checkpoints`、`checkpoint_writes`、`checkpoint_blobs`、`checkpoint_migrations`）是「待删除」，因为这几张表由 checkpointer 自己建、不在模型里。这是噪音，不是漏迁移。空库上跑 check 才是可比对的信号。
-10. 前端测试只覆盖 `api/client.ts` 与 `stores/reminders.ts`，组件层没有测试，也没配覆盖率阈值。这两处坏的 symptom 跨页面，收益最高；组件最依赖真实接口形状，单测收益低于接口契约测试，留到接口稳定后再补。
+10. 前端测试覆盖 `api/client.ts`、`stores/reminders.ts`、`views/planLogic.ts`，组件本身仍然没有渲染测试，也没配覆盖率阈值。判定与请求体拼装这类分支已经抽成纯函数并覆盖；组件最依赖真实接口形状，单测收益低于接口契约测试，留到接口稳定后再补。

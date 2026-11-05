@@ -6,6 +6,16 @@ import { assessmentApi, planApi, reportApi, trackingApi } from '@/api'
 import type { Plan, PlanSummary, Task, TrackingSummary } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
 import { useToastStore } from '@/stores/toast'
+import {
+  buildTaskPatch,
+  canCancelPlan,
+  canCheckinPlan,
+  canReassessPlan,
+  canShiftPlan,
+  daysUntil,
+  groupTasksByDate,
+  isAdjustmentPending,
+} from '@/views/planLogic'
 
 const toast = useToastStore()
 const router = useRouter()
@@ -32,62 +42,30 @@ const reporting = ref(false)
 
 const today = new Date().toISOString().slice(0, 10)
 
-const grouped = computed(() => {
-  if (!selected.value) return []
-  const map = new Map<string, Task[]>()
-  selected.value.tasks.forEach((task) => {
-    const list = map.get(task.scheduled_date) || []
-    list.push(task)
-    map.set(task.scheduled_date, list)
-  })
-  return Array.from(map.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([date, tasks]) => ({ date, tasks }))
-})
-
-const activeVersion = computed(() => {
-  if (!selected.value) return null
-  return selected.value.versions.find((item) => item.id === selected.value?.current_version_id) || null
-})
+const grouped = computed(() => (selected.value ? groupTasksByDate(selected.value.tasks) : []))
 
 // 调整产生的草稿不会动 current_version_id，待确认版本由后端单独返回
 const pendingVersion = computed(() => selected.value?.pending_version || null)
 
 const canApprove = computed(() => !!pendingVersion.value)
 
-const pendingIsAdjustment = computed(() => !!pendingVersion.value && selected.value?.status === 'active')
+const pendingIsAdjustment = computed(() => isAdjustmentPending(selected.value))
 
 const adjustment = computed(() => selected.value?.adjustment || null)
 
-// 打卡只允许 active 计划的当前版本任务，已结束或未生效的计划不该再露出打卡按钮
-const canCheckin = computed(() => selected.value?.status === 'active')
+const canCheckin = computed(() => canCheckinPlan(selected.value))
 
-const canCancel = computed(() => ['active', 'pending_review'].includes(selected.value?.status || ''))
+const canCancel = computed(() => canCancelPlan(selected.value))
 
-const canShift = computed(() => {
-  const plan = selected.value
-  if (!plan) return false
-  if (!['active', 'pending_review'].includes(plan.status)) return false
-  // 后端按版本统计打卡记录，前端只能按当前版本任务的打卡状态粗判，最终拦截以接口为准
-  if (plan.start_date < today) return false
-  return !plan.tasks.some((task) => ['completed', 'partial', 'skipped'].includes(task.checkin_status || ''))
-})
+const canShift = computed(() => canShiftPlan(selected.value, today))
 
 const daysLeft = computed(() => {
   const plan = selected.value
   if (!plan) return 0
-  const end = new Date(`${plan.end_date}T00:00:00`).getTime()
-  const now = new Date(`${today}T00:00:00`).getTime()
-  return Math.round((end - now) / 86400000)
+  return daysUntil(plan.end_date, today)
 })
 
-// 周期结束或只剩两天时给重新评估入口，平台不自动发起，也不自动生成下一周期计划
-const canReassess = computed(() => {
-  const plan = selected.value
-  if (!plan) return false
-  if (plan.status === 'completed') return true
-  return plan.status === 'active' && daysLeft.value <= 2
-})
+const canReassess = computed(() => canReassessPlan(selected.value, daysLeft.value))
 
 async function load(preferId?: string) {
   loading.value = true
@@ -290,20 +268,18 @@ async function reschedule(task: Task) {
     toast.error('选择新的任务日期')
     return
   }
-  const dateChanged = rescheduleDate.value !== task.scheduled_date
-  const timeChanged = editTime.value && editTime.value !== (task.scheduled_time || '')
-  const reminderChanged = editReminder.value !== task.reminder_enabled
-  if (!dateChanged && !timeChanged && !reminderChanged) {
+  const patch = buildTaskPatch(task, {
+    scheduled_date: rescheduleDate.value,
+    scheduled_time: editTime.value,
+    reminder_enabled: editReminder.value,
+  })
+  if (!patch.changed) {
     toast.error('日期、时间与提醒都没有变化')
     return
   }
   busy.value = true
   try {
-    await planApi.patchTask(task.id, {
-      ...(dateChanged ? { scheduled_date: rescheduleDate.value } : {}),
-      ...(timeChanged ? { scheduled_time: editTime.value } : {}),
-      ...(reminderChanged ? { reminder_enabled: editReminder.value } : {}),
-    })
+    await planApi.patchTask(task.id, patch.body)
     rescheduleTask.value = ''
     toast.success('任务已更新')
     await load(selected.value?.id)

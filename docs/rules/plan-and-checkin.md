@@ -38,6 +38,8 @@
 
 已经开始的计划一律走单条调整。整体改期会把旧打卡挂到不存在的任务上。
 
+`scheduled_time` 的语义按字段是否出现区分：不出现是不改，显式传 `null` 是把时间去掉（任务没有时间表示任意时间）。服务端用 `payload.model_fields_set` 判断，不能用 `is not None`，否则清空请求会被当成没传，任务一旦设过时间就再也删不掉。`scheduled_date` 与 `reminder_enabled` 没有「清空」这一说，仍按 `is not None` 处理。
+
 ## 提醒
 
 提醒按访问时生成，没有后台调度。`plan_tasks.reminder_enabled` 只挡当天任务待完成这一条，计划级的逾期与结束提醒不受它影响。新建任务默认开启，复制版本沿用原值。

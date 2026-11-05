@@ -398,7 +398,9 @@ async def patch_task(session: AsyncSession, user_id: UUID, task_id: UUID, payloa
             # 打卡按任务 id 加打卡日期唯一，日期挪走会让已完成记录对到一个空日子上
             raise Conflict("任务已有打卡记录，不能再改日期")
         task.scheduled_date = payload.scheduled_date
-    if payload.scheduled_time is not None:
+    # 时间允许清空：字段不出现才是「不改」，显式传 null 表示把时间去掉。
+    # 用 is not None 判断的话，清空请求会被当成没传，任务时间永远删不掉
+    if "scheduled_time" in payload.model_fields_set:
         task.scheduled_time = payload.scheduled_time
     if payload.reminder_enabled is not None:
         task.reminder_enabled = payload.reminder_enabled
