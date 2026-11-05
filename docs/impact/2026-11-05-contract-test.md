@@ -35,12 +35,16 @@
 
 ## 四、`dict` 型响应：取真实响应比键
 
-对四个用得到的接口，起一次真实请求，拿响应里第一个元素的键去比前端声明：
+对六个用得到的接口，起一次真实请求，拿响应里第一个元素的键去比前端声明：
 
 - `GET /profiles/me` 对 `Profile`，顺带显式断言 `age_years` 存在（AG-04 的现场）。
 - `GET /tracking/feedback` 对 `FeedbackRecord`：先 POST 一条再读，空列表会让断言变成空转，所以加了 `assert items`。
 - `GET /consents` 对 `ConsentRecord`，同上。
 - `GET /knowledge/sources` 对 `KnowledgeSource`，也加了非空断言——语料没导入时这条会红，比静默通过好。
+- `GET /plans` 对 `PlanSummary`。首页靠 `status` 找生效中的计划、靠 `current_version_id` 判断版本，这两个键改名就是白屏。
+- `GET /assessments` 对 `AssessmentSummary`，同样走 `activate_plan()` 之后读历史列表。
+
+后两条要走一次计划确认流程，测试里 LLM 关着，一条约半秒。
 
 ## 五、顺手修掉的漂移
 
@@ -60,8 +64,10 @@
 | CT-06 | `GET /tracking/feedback` | 键与 `FeedbackRecord` 一致 |
 | CT-07 | `GET /consents` | 键与 `ConsentRecord` 一致 |
 | CT-08 | `GET /knowledge/sources` | 键与 `KnowledgeSource` 一致 |
+| CT-09 | `GET /plans` | 键与 `PlanSummary` 一致 |
+| CT-10 | `GET /assessments` | 键与 `AssessmentSummary` 一致 |
 
-变异验证：把 `ProfileOut.age_years` 删掉，CT-01 与 CT-05 同时红，报错直接写「Profile 声明了 ['age_years']，但 ProfileOut 没有这些字段」。复原后 30 项全绿。
+变异验证：把 `ProfileOut.age_years` 删掉，CT-01 与 CT-05 同时红，报错直接写「Profile 声明了 ['age_years']，但 ProfileOut 没有这些字段」。复原后 32 项全绿。
 
 ## 影响面
 
@@ -70,12 +76,12 @@
 | 接口 | 否 | 只加测试 |
 | 后端运行时代码 | 否 | 无改动 |
 | 前端 | 是 | `types.ts` 删掉一个从未被赋值的字段 `excerpt` |
-| 测试耗时 | 是 | 新增 30 项，约 1 秒，其中 4 项起真实请求 |
+| 测试耗时 | 是 | 新增 32 项，约 1.6 秒，其中 6 项起真实请求 |
 | CI | 否 | 已在 `pytest` 范围内，不用改 workflow |
 
 ## 验证
 
-- `pytest backend` 203 项通过（原 173 + 新增 30）。
+- `pytest backend` 205 项通过（原 173 + 新增 32）。
 - 前端 `npm test` 89 项、`vue-tsc --noEmit`、`npm run build` 通过。
 
 ## 遗留

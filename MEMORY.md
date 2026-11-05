@@ -522,9 +522,9 @@
 | CT-03 | 表里登记的接口已从 `types.ts` 删掉 | 红，提示清表 | 符合 | 同上 |
 | CT-04 | 解析出的接口数量 | 大于 20 | 符合，解析器被写法绊住时能发现 | 同上::test_types_file_is_found |
 | CT-05 | `GET /profiles/me` | `age_years` 在响应里 | 符合（AG-04 的现场） | 同上::test_profile_response_keys |
-| CT-06~08 | feedback / consents / knowledge 三个 dict 响应 | 键与前端声明一致 | 符合，都加了非空断言，空列表不算通过 | 同上 |
+| CT-06~10 | feedback / consents / knowledge / plans / assessments 五个 dict 响应 | 键与前端声明一致 | 符合，都加了非空断言，空列表不算通过 | 同上 |
 
-解析器不引 TypeScript 编译器：去行注释、按 `export interface` 定位、大括号配对取 body、只在深度 0 抓 `key:`，泛型接口单列。只比一个方向（前端字段减模型字段为空），后端多给不算问题。变异验证：删 `ProfileOut.age_years`，CT-01 与 CT-05 同时红。`pytest backend` 173 → 203 项。
+解析器不引 TypeScript 编译器：去行注释、按 `export interface` 定位、大括号配对取 body、只在深度 0 抓 `key:`，泛型接口单列。只比一个方向（前端字段减模型字段为空），后端多给不算问题。变异验证：删 `ProfileOut.age_years`，CT-01 与 CT-05 同时红。`pytest backend` 173 → 205 项。
 
 ## 已知取舍
 

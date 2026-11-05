@@ -32,6 +32,7 @@ from app.schemas.health import (
 )
 from app.schemas.plan import AdjustmentOut, PendingTaskOut, PendingVersionOut, PlanOut, TaskOut, VersionOut
 from app.schemas.tracking import SummaryOut, TrendOut, TrendPoint
+from tests.helpers import activate_plan
 
 TYPES_FILE = Path(__file__).resolve().parents[3] / "frontend" / "src" / "api" / "types.ts"
 
@@ -119,8 +120,8 @@ MAPPED: dict[str, type[BaseModel]] = {
 }
 
 NO_MODEL: dict[str, str] = {
-    "AssessmentSummary": "GET /assessments 由 assessment_service 拼 dict",
-    "PlanSummary": "GET /plans 由 plan_service 拼 dict",
+    "AssessmentSummary": "assessment_service.list_latest 拼 dict，运行时见 test_assessment_summary_keys",
+    "PlanSummary": "plan_service.list_plans 拼 dict，运行时见 test_plan_summary_keys",
     "ReportSummary": "GET /reports 由 report_service 拼 dict",
     "ReportSection": "ReportDetail.content 的内部结构，后端按报告类型拼 dict",
     "KnowledgeSource": "knowledge_repo.as_dict 拼的，运行时另有用例",
@@ -220,3 +221,28 @@ async def test_knowledge_source_keys(client, auth):
 
     assert items, "知识库语料没导入，这条断言就成了空转"
     assert _missing(items[0], "KnowledgeSource") == []
+
+
+@pytest.mark.asyncio
+async def test_plan_summary_keys(client, auth):
+    """首页拿 `GET /plans` 找生效中的计划，`status` 与 `current_version_id` 一改名就白屏。"""
+    await activate_plan(client, auth)
+
+    response = await client.get("/api/v1/plans", headers=auth)
+    assert response.status_code == 200
+    items = response.json()["data"]
+
+    assert items
+    assert _missing(items[0], "PlanSummary") == []
+
+
+@pytest.mark.asyncio
+async def test_assessment_summary_keys(client, auth):
+    await activate_plan(client, auth)
+
+    response = await client.get("/api/v1/assessments", headers=auth)
+    assert response.status_code == 200
+    page = response.json()["data"]
+
+    assert page["items"], "刚走完一次评估，历史列表不该是空的"
+    assert _missing(page["items"][0], "AssessmentSummary") == []
