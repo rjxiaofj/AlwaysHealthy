@@ -291,6 +291,7 @@
 3. 计划调整只复制任务结构，不改任务日期。整体改期走 `POST /plans/{id}/shift`，只在计划未开始且当前版本无打卡时允许，已经开始就只能逐条改任务。
 4. 无后台调度。提醒在访问时按需生成，这是 FDE 明确的选择。任务级开关只挡当天任务提醒，计划级提醒始终生成。
 5. 周期报告只在周期结束后由用户手动生成，不随打卡自动触发。报告落 `tracking_summaries` 与 `health_reports`，同一计划同一周期只一份。
+6. 前端封装层的清理只删了真正没人调的三个方法。后端 `GET /assessments/{id}/evidence`、`GET /conversations/{id}`、`GET /runs/{run_id}`、`GET /tracking/metrics` 仍保留：前两个的字段与 detail 重复，后两个是调试入口，删掉会牵动 OpenAPI 与文档示例，暂时留着。
 
 ## 待核验事项
 
