@@ -6,6 +6,7 @@ import { streamMessage, streamResume } from '@/api/stream'
 import type { ChatMessage, ConfirmationPayload, Conversation } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
 import { useToastStore } from '@/stores/toast'
+import { shouldSubmitOnEnter } from '@/utils/keyboard'
 
 const toast = useToastStore()
 const conversations = ref<Conversation[]>([])
@@ -101,6 +102,13 @@ async function send() {
     streamingText.value = ''
     await refreshMessages()
   }
+}
+
+function onKeydown(event: KeyboardEvent) {
+  if (!shouldSubmitOnEnter(event)) return
+  // 拦默认行为放在判断之后：组字时的回车要留给输入法
+  event.preventDefault()
+  send()
 }
 
 async function resume(decision: 'approve' | 'modify' | 'reject') {
@@ -267,7 +275,7 @@ onMounted(async () => {
             class="field max-h-[120px] resize-none"
             placeholder="输入健康描述或问题，Enter 发送，Shift + Enter 换行"
             :disabled="sending"
-            @keydown.enter.exact.prevent="send"
+            @keydown="onKeydown"
           />
           <button class="btn btn-primary" :disabled="!canSend" @click="send">
             {{ sending ? '处理中' : '发送' }}

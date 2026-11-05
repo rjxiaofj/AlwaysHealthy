@@ -52,7 +52,12 @@ async function runAssessment() {
 }
 
 async function openHistory(id: string) {
-  current.value = await assessmentApi.detail(id)
+  try {
+    current.value = await assessmentApi.detail(id)
+  } catch (error) {
+    // 历史评估可能已被清理，点开失败要给个提示，不能静默没有任何反应
+    toast.error(error instanceof Error ? error.message : '读取这份评估失败')
+  }
 }
 
 onMounted(load)

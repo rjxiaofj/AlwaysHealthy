@@ -480,6 +480,22 @@
 
 `get_profile` 返回的 `age` 是 `age_of(birth_date) or age_years`，两条来源合成一个值，前端靠 `birth_date` 有没有值判断来源即可，不需要后端加字段。没有开放「直接编辑年龄」的入口，避免生日与年龄两个来源打架。
 
+## 2026-11-05 跨零点翻页与输入法回车
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| CD-01 | 23:50 挂载首页 | 日期是当天 | 符合 | 无 |
+| CD-02 | 23:59:40 挂载，推到 00:00:10 后走 30 秒 | 日期翻到第二天 | 改动前 `today` 在 setup 时算一次，页面挂着永远不变 | DashboardView 今日任务、PlansView today |
+| CD-03 | 08:00 挂载，走 60 秒 | 日期不变 | 符合，值没变就不写入，不触发重渲染 | 无 |
+| CD-04 | 两个页面同时用 | 同一份日期，只起一个定时器 | 符合，`vi.getTimerCount()` 为 1 | 无 |
+| CD-05 | 依次卸载 | 最后一个卸载后定时器清零 | 符合 | 无 |
+| CD-06 | 卸载后改系统时间再挂载 | 立即对齐，不沿用旧值 | 符合 | 无 |
+| IME-01 | 中文输入法组字时按回车 | 不发送 | 改动前 `@keydown.enter.exact.prevent` 一样触发，既打断选词又把半截输入发出去 | ChatView 输入框 |
+| IME-02 | 普通回车 | 发送 | 符合 | 无 |
+| IME-03 | Shift 加回车 | 换行不发送 | 符合 | 无 |
+
+`useToday()` 是模块级单例，三十秒对一次 `localToday()`，另接 `visibilitychange` 对齐（后台标签页定时器会被节流）。引用计数控制启停，第一个挂载启动、最后一个卸载停止。定时器对齐到零点整的收益只有半分钟，没做。
+
 ## 已知取舍
 
 1. 知识检索默认走关键词通道。BGE-M3 与 Chroma 的代码保留在 `app/integrations/chroma_client.py`，需要安装 torch 与 chromadb 并下载模型权重后把 `EMBEDDING_BACKEND` 切到 bge。两套索引独立，不混用向量。
@@ -500,5 +516,5 @@
 7. `~/.docker/daemon.json` 里加的 `registry-mirrors` 已被 Docker Desktop 覆盖回默认，现在文件里只剩 `builder` 与 `experimental`，`docker info` 没有 Mirrors 项。镜像是本地构建，拉取不受影响，换机部署前要在 Docker Desktop 设置里重新加。
 8. 资料解析的规则按常见检验单写法覆盖，手头没有真实报告样本。真实排版的字段名变体、跨页表格、竖排文字都还没验过，拿到样本后要补规则与用例。
 9. 容器实库上跑 `alembic check` 会报 LangGraph checkpointer 的四张表（`checkpoints`、`checkpoint_writes`、`checkpoint_blobs`、`checkpoint_migrations`）是「待删除」，因为这几张表由 checkpointer 自己建、不在模型里。这是噪音，不是漏迁移。空库上跑 check 才是可比对的信号。
-10. 前端测试覆盖 `api/client.ts`、`stores/reminders.ts`、`views/planLogic.ts`、`views/profileLogic.ts`、`utils/datetime.ts`，组件本身仍然没有渲染测试，也没配覆盖率阈值。判定与请求体拼装这类分支已经抽成纯函数并覆盖；组件最依赖真实接口形状，单测收益低于接口契约测试，留到接口稳定后再补。
+10. 前端测试覆盖 `api/client.ts`、`stores/reminders.ts`、`views/planLogic.ts`、`views/profileLogic.ts`、`utils/datetime.ts`、`utils/today.ts`、`utils/keyboard.ts`，组件本身仍然没有渲染测试，也没配覆盖率阈值。判定与请求体拼装这类分支已经抽成纯函数并覆盖；组件最依赖真实接口形状，单测收益低于接口契约测试，留到接口稳定后再补。
 11. 业务日期固定在东八区（`BUSINESS_TZ`），非东八区用户看到的「今天」会是东八区的今天。急救电话默认 120、文案中文，这个假设与产品定位一致；真要支持其他时区得把偏移做成配置项。
