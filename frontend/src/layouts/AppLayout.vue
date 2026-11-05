@@ -2,17 +2,16 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { reminderApi } from '@/api'
 import AppIcon from '@/components/AppIcon.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useReminderStore } from '@/stores/reminders'
 import { useThemeStore } from '@/stores/theme'
-import type { Reminder } from '@/api/types'
 
 const auth = useAuthStore()
 const theme = useThemeStore()
+const reminders = useReminderStore()
 const router = useRouter()
 const drawer = ref(false)
-const unread = ref(0)
 
 const nav = [
   { to: '/', label: '健康首页', icon: 'home' as const },
@@ -23,15 +22,6 @@ const nav = [
   { to: '/profile', label: '个人中心', icon: 'user' as const },
 ]
 
-async function loadReminders() {
-  try {
-    const items: Reminder[] = await reminderApi.list()
-    unread.value = items.filter((item) => !item.read_at).length
-  } catch {
-    unread.value = 0
-  }
-}
-
 async function logout() {
   await auth.logout()
   router.push('/login')
@@ -39,7 +29,7 @@ async function logout() {
 
 onMounted(async () => {
   await auth.ensureUser()
-  loadReminders()
+  reminders.load().catch(() => undefined)
 })
 </script>
 
@@ -85,9 +75,9 @@ onMounted(async () => {
           </div>
         </div>
         <div class="flex items-center gap-2">
-          <RouterLink to="/" class="chip">
+          <RouterLink to="/reminders" class="chip">
             待办提醒
-            <span v-if="unread" class="ml-1 font-semibold" :style="{ color: 'var(--color-danger)' }">{{ unread }}</span>
+            <span v-if="reminders.unread" class="ml-1 font-semibold" :style="{ color: 'var(--color-danger)' }">{{ reminders.unread }}</span>
           </RouterLink>
         </div>
       </header>

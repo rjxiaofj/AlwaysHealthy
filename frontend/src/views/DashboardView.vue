@@ -1,21 +1,22 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 
-import { assessmentApi, planApi, reminderApi, trackingApi } from '@/api'
-import type { Assessment, Plan, Reminder, Task, Trend } from '@/api/types'
+import { assessmentApi, planApi, trackingApi } from '@/api'
+import type { Assessment, Plan, Task, Trend } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
 import RiskBadge from '@/components/RiskBadge.vue'
 import TrendChart from '@/components/TrendChart.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useReminderStore } from '@/stores/reminders'
 import { useToastStore } from '@/stores/toast'
 
 const auth = useAuthStore()
 const toast = useToastStore()
+const reminderStore = useReminderStore()
 const loading = ref(true)
 const checking = ref('')
 const assessment = ref<Assessment | null>(null)
 const plan = ref<Plan | null>(null)
-const reminders = ref<Reminder[]>([])
 const trends = ref<Trend[]>([])
 const activeMetric = ref('')
 
@@ -29,6 +30,7 @@ const dimensionNames: Record<string, string> = {
 
 const emptyDimensions = computed(() => !assessment.value || assessment.value.dimensions.length === 0)
 const selectedTrend = computed(() => trends.value.find((item) => item.metric_code === activeMetric.value) || trends.value[0])
+const unreadThree = computed(() => reminderStore.items.filter((item) => !item.read_at).slice(0, 3))
 const todayTasks = computed(() => {
   if (!plan.value) return []
   const today = new Date().toISOString().slice(0, 10)
@@ -38,14 +40,13 @@ const todayTasks = computed(() => {
 async function load() {
   loading.value = true
   try {
-    const [latest, plans, notices, trendList] = await Promise.all([
+    const [latest, plans, trendList] = await Promise.all([
       assessmentApi.latest(),
       planApi.list(),
-      reminderApi.list(),
       trackingApi.trends(['systolic_bp', 'weight_kg', 'sleep_hours'], 30).catch(() => []),
+      reminderStore.load().catch(() => undefined),
     ])
     assessment.value = latest
-    reminders.value = notices.filter((item) => !item.read_at).slice(0, 3)
     trends.value = trendList
     activeMetric.value = trendList.length ? trendList[0].metric_code : ''
     const active = plans.find((item) => item.status === 'active') || plans[0]
@@ -57,8 +58,7 @@ async function load() {
 
 async function markRead(id: string) {
   try {
-    await reminderApi.read(id)
-    reminders.value = reminders.value.filter((item) => item.id !== id)
+    await reminderStore.read(id)
   } catch {
     /* 标记失败不挡住页面，下次进入还会重新拉取 */
   }
@@ -173,13 +173,16 @@ onMounted(load)
         <section class="glass card-pad">
           <div class="mb-3 flex items-center justify-between">
             <h2 class="text-[14px] font-semibold">未读提醒</h2>
-            <span v-if="reminders.length" class="text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
-              {{ reminders.length }} 条
-            </span>
+            <div class="flex items-center gap-2">
+              <span v-if="unreadThree.length" class="text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+                {{ reminderStore.unread }} 条
+              </span>
+              <RouterLink to="/reminders" class="text-[12px]" :style="{ color: 'var(--color-text-secondary)' }">全部</RouterLink>
+            </div>
           </div>
-          <EmptyState v-if="!reminders.length" title="没有未读提醒" />
+          <EmptyState v-if="!unreadThree.length" title="没有未读提醒" />
           <ul v-else class="flex flex-col gap-2">
-            <li v-for="item in reminders" :key="item.id" class="flex items-start justify-between gap-2">
+            <li v-for="item in unreadThree" :key="item.id" class="flex items-start justify-between gap-2">
               <div class="min-w-0 text-[12px]">
                 <p class="font-medium">{{ item.title }}</p>
                 <p :style="{ color: 'var(--color-text-secondary)' }">{{ item.content }}</p>

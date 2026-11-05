@@ -1,6 +1,7 @@
 from datetime import UTC, date, datetime
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Notification
@@ -78,7 +79,11 @@ async def sync(session: AsyncSession, user_id: UUID) -> None:
     for item in created:
         session.add(item)
     if created or cleared:
-        await session.commit()
+        try:
+            await session.commit()
+        except IntegrityError:
+            # 两个访问同时进来时，另一边可能已经写入同一批 dedup_key，放弃本次写入即可
+            await session.rollback()
 
 
 async def list_reminders(session: AsyncSession, user_id: UUID) -> list[dict]:

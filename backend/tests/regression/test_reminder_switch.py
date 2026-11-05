@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import date
 
@@ -117,3 +118,19 @@ async def test_sync_does_not_touch_other_user_reminder(client, session) -> None:
 
     row = await session.scalar(select(Notification).where(Notification.dedup_key == "task_due:other:manual"))
     assert row.read_at is None
+
+
+async def test_parallel_reminder_requests_stay_clean(client) -> None:
+    headers, _ = await fresh_user(client, "par")
+    plan = await activate_plan(client, headers)
+    today = date.today().isoformat()
+    today_tasks = [item for item in plan["tasks"] if item["scheduled_date"] == today]
+
+    first, second = await asyncio.gather(
+        client.get("/api/v1/reminders", headers=headers),
+        client.get("/api/v1/reminders", headers=headers),
+    )
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    task_due = [item for item in first.json()["data"] if item["notification_type"] == "task_due"]
+    assert len(task_due) == len(today_tasks)
