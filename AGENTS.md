@@ -58,6 +58,7 @@
 - `health_plan_versions` 只增不改。生效版本靠 `health_plans.current_version_id` 指向，旧版本保留。
 - 打卡、提醒、报告创建必须幂等。打卡唯一键 `(task_id, checkin_date)`，重复提交返回已有记录而不是新增。
 - 设备读数只有 `quality_status=verified` 才允许进入评估快照，其余只进指标表，过滤点在 `app/repositories/health.py::latest_metrics`。
+- 体检资料的识别结果只进 `file_assets.parsed_payload`，用户确认后才写 `health_metric_records`。不做 OCR，解析不出来的保持 `unsupported`，不得用模型猜字段。
 - `security_audit_logs` 与 `consent_records` 只追加不覆盖。审计不得记录密码、令牌原文、完整档案。
 - Redis 只做缓存与短期协调。禁止把档案、评估、计划版本、打卡记录只写 Redis。
 - 迁移全部走 Alembic，不手改演示库。

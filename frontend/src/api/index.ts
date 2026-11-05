@@ -5,6 +5,7 @@ import type {
   ChatMessage,
   ConsentRecord,
   Conversation,
+  ExtractedDocument,
   FileItem,
   PageData,
   Plan,
@@ -39,6 +40,11 @@ export const profileApi = {
     return api<{ id: string; parse_status: string }>('/profiles/me/documents', { formData: form })
   },
   files: () => api<FileItem[]>('/profiles/me/documents'),
+  extracted: (id: string) => api<ExtractedDocument>(`/profiles/me/documents/${id}/extracted`),
+  applyExtracted: (id: string, metricCodes: string[]) =>
+    api<{ applied: number; skipped: number }>(`/profiles/me/documents/${id}/apply`, {
+      body: { metric_codes: metricCodes },
+    }),
 }
 
 export const chatApi = {

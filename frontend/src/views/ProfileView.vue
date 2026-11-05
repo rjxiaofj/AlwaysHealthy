@@ -3,7 +3,7 @@ import { onMounted, ref } from 'vue'
 
 import { consentApi, profileApi, reportApi } from '@/api'
 import { tokens } from '@/api/client'
-import type { ConsentRecord, FileItem, Profile, ReportSummary } from '@/api/types'
+import type { ConsentRecord, ExtractedDocument, FileItem, Profile, ReportSummary } from '@/api/types'
 import { useToastStore } from '@/stores/toast'
 
 const toast = useToastStore()
@@ -14,6 +14,10 @@ const consents = ref<ConsentRecord[]>([])
 const busy = ref(false)
 const uploading = ref(false)
 const downloading = ref('')
+const extracted = ref<ExtractedDocument | null>(null)
+const extracting = ref('')
+const selectedCodes = ref<string[]>([])
+const applying = ref(false)
 
 const consentOptions = [
   { type: 'health_data', label: '健康数据处理', desc: '保存并使用健康档案与指标记录生成评估' },
@@ -122,7 +126,13 @@ async function upload(event: Event) {
   uploading.value = true
   try {
     const result = await profileApi.upload(file)
-    toast.success(result.parse_status === 'pending' ? '文件已保存，解析尚未启用' : '文件已上传')
+    const hint =
+      result.parse_status === 'parsed'
+        ? '文件已上传并完成识别'
+        : result.parse_status === 'unsupported'
+          ? '文件已保存，这份资料没有可读取的文字层'
+          : '文件已保存，解析失败'
+    toast.success(hint)
     files.value = await profileApi.files()
   } catch (error) {
     toast.error(error instanceof Error ? error.message : '上传失败')
@@ -132,8 +142,59 @@ async function upload(event: Event) {
   }
 }
 
+async function openExtracted(item: FileItem) {
+  if (extracted.value?.id === item.id) {
+    extracted.value = null
+    selectedCodes.value = []
+    return
+  }
+  extracting.value = item.id
+  try {
+    const detail = await profileApi.extracted(item.id)
+    extracted.value = detail
+    selectedCodes.value = detail.fields.map((field) => field.metric_code)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : '读取识别结果失败')
+  } finally {
+    extracting.value = ''
+  }
+}
+
+function toggleCode(code: string) {
+  const index = selectedCodes.value.indexOf(code)
+  if (index >= 0) selectedCodes.value.splice(index, 1)
+  else selectedCodes.value.push(code)
+}
+
+async function applyExtracted() {
+  if (!extracted.value || selectedCodes.value.length === 0) return
+  applying.value = true
+  try {
+    const result = await profileApi.applyExtracted(extracted.value.id, selectedCodes.value)
+    toast.success(result.applied > 0 ? `已写入 ${result.applied} 项指标` : '这些指标已经写入过，未重复记录')
+    extracted.value = null
+    selectedCodes.value = []
+    await load()
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : '写入失败')
+  } finally {
+    applying.value = false
+  }
+}
+
 function sizeText(size: number) {
   return size > 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)} MB` : `${Math.round(size / 1024)} KB`
+}
+
+const PARSE_LABELS: Record<string, string> = {
+  parsed: '已识别',
+  unsupported: '无法识别',
+  failed: '解析失败',
+  pending: '待解析',
+}
+
+function parseText(status: string) {
+  return PARSE_LABELS[status] ?? status
 }
 
 async function downloadFile(item: FileItem) {
@@ -308,17 +369,64 @@ onMounted(load)
           <h2 class="mb-2 text-[14px] font-semibold">体检资料</h2>
           <input class="field" type="file" accept=".pdf,.jpg,.jpeg,.png" :disabled="uploading" @change="upload" />
           <p class="mt-2 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
-            支持 PDF、JPG、PNG，单个不超过 10MB。当前版本只保存文件，文字识别与字段提取尚未开放，上传结果不会被自动写入档案。
+            支持 PDF、JPG、PNG，单个不超过 10MB。PDF 会尝试读取文字层并列出识别到的指标，图片与扫描件只保存原件。识别结果需要你逐项确认后才会写入指标记录。
           </p>
-          <ul class="mt-2 flex flex-col gap-1">
-            <li v-for="item in files" :key="item.id" class="flex items-center justify-between gap-2 text-[12px]">
-              <span class="truncate">{{ item.original_filename }}</span>
-              <span class="flex shrink-0 items-center gap-2">
-                <span :style="{ color: 'var(--color-text-tertiary)' }">{{ sizeText(item.file_size) }} · {{ item.parse_status }}</span>
-                <button class="btn btn-ghost !px-2 !py-1 text-[11px]" :disabled="downloading === item.id" @click="downloadFile(item)">
-                  {{ downloading === item.id ? '下载中' : '下载' }}
-                </button>
-              </span>
+          <ul class="mt-2 flex flex-col gap-2">
+            <li v-for="item in files" :key="item.id" class="flex flex-col gap-1">
+              <div class="flex items-center justify-between gap-2 text-[12px]">
+                <span class="truncate">{{ item.original_filename }}</span>
+                <span class="flex shrink-0 items-center gap-2">
+                  <span :style="{ color: 'var(--color-text-tertiary)' }">{{ sizeText(item.file_size) }} · {{ parseText(item.parse_status) }}</span>
+                  <button
+                    v-if="item.parse_status === 'parsed'"
+                    class="btn btn-ghost !px-2 !py-1 text-[11px]"
+                    :disabled="extracting === item.id"
+                    @click="openExtracted(item)"
+                  >
+                    {{ extracted?.id === item.id ? '收起' : extracting === item.id ? '读取中' : '识别结果' }}
+                  </button>
+                  <button class="btn btn-ghost !px-2 !py-1 text-[11px]" :disabled="downloading === item.id" @click="downloadFile(item)">
+                    {{ downloading === item.id ? '下载中' : '下载' }}
+                  </button>
+                </span>
+              </div>
+              <div
+                v-if="extracted?.id === item.id"
+                class="rounded-[14px] border px-3 py-2"
+                :style="{ borderColor: 'var(--color-border)' }"
+              >
+                <p v-if="!extracted.fields.length" class="text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+                  {{ extracted.parse_message }}
+                </p>
+                <template v-else>
+                  <ul class="flex flex-col gap-1">
+                    <li v-for="field in extracted.fields" :key="field.metric_code" class="flex items-center gap-2 text-[12px]">
+                      <input
+                        :id="`pick-${item.id}-${field.metric_code}`"
+                        type="checkbox"
+                        :checked="selectedCodes.includes(field.metric_code)"
+                        @change="toggleCode(field.metric_code)"
+                      />
+                      <label :for="`pick-${item.id}-${field.metric_code}`" class="flex flex-1 cursor-pointer items-center gap-1">
+                        <span>{{ field.label }}</span>
+                        <span class="font-medium">{{ field.value }}</span>
+                        <span :style="{ color: 'var(--color-text-tertiary)' }">{{ field.unit }}</span>
+                      </label>
+                      <span class="shrink-0 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">{{ field.raw }}</span>
+                    </li>
+                  </ul>
+                  <div class="mt-2 flex items-center justify-between gap-2">
+                    <span class="text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">{{ extracted.parse_message }}</span>
+                    <button
+                      class="btn btn-primary shrink-0 !px-3 !py-1 text-[11px]"
+                      :disabled="applying || selectedCodes.length === 0"
+                      @click="applyExtracted"
+                    >
+                      {{ applying ? '写入中' : `写入 ${selectedCodes.length} 项` }}
+                    </button>
+                  </div>
+                </template>
+              </div>
             </li>
           </ul>
         </section>

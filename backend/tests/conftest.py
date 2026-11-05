@@ -9,6 +9,11 @@ os.environ["KNOWLEDGE_DIR"] = str(Path(__file__).resolve().parents[2] / "knowled
 os.environ["STORAGE_DIR"] = "./test_storage"
 os.environ["JWT_SECRET"] = "test-secret-key-that-is-long-enough-for-hs256"
 
+# init_models 只建缺失的表，不会给已有表补列。每次测试从空库起，避免模型改了还跑旧结构
+_DB_FILE = Path(__file__).resolve().parents[1] / "test_alwayshealthy.db"
+if _DB_FILE.exists():
+    _DB_FILE.unlink()
+
 import httpx
 import pytest_asyncio
 

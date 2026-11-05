@@ -23,6 +23,15 @@
 - 可穿戴适配统一走 `app/integrations/wearable.py`，厂商差异只在该文件实现。
 - 同一指标同一测量时间的设备读数只入库一次，去重点在 `wearable.ingest`。
 
+## 资料解析
+
+- 体检资料上传后立刻解析，状态落在 `file_assets.parse_status`：`parsed`、`unsupported`、`failed`。不存在长期停在 `pending` 的中间态。
+- 识别结果只写 `file_assets.parsed_payload`，用户逐项确认后才写 `health_metric_records`，来源记 `document`。跳过确认直接入库会让认错的数字顺着评估链路放大成错误风险等级。
+- 只解析 PDF 文本层，不做 OCR。图片与扫描件记 `unsupported` 并保留原件，不用模型猜字段。
+- 命中值必须落在 `app/tools/metrics.py` 的取值区间内，超出即丢弃。报告用 mg/dL 时按指标系数换算，换算后再校验区间。
+- 同一编码在一份报告里出现多次时按原文位置取最靠前的一条，其余留给用户看原文自行判断。
+- 重复确认同一份资料不会产生重复记录，测量时间取文件上传时刻，去重点在 `file_service.apply_extracted`。
+
 ## 迁移
 
 - 所有结构变更走 Alembic，`backend/migrations/versions`。

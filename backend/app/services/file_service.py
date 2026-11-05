@@ -1,15 +1,21 @@
 import hashlib
 import secrets
+from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
 from fastapi import UploadFile
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.exceptions import FileRejected, NotFound
-from app.db.models import FileAsset
+from app.core.exceptions import FileRejected, InvalidHealthData, NotFound
+from app.db.models import FileAsset, HealthMetricRecord
 from app.repositories import chat as chat_repo
+from app.services import document_parser
+from app.tools.metrics import METRIC_DEFS
+
+SOURCE_DOCUMENT = "document"
 
 ALLOWED = {
     "pdf": ("application/pdf", b"%PDF"),
@@ -50,6 +56,17 @@ async def save_upload(session: AsyncSession, user_id: UUID, upload: UploadFile) 
         parse_status="pending",
     )
     session.add(asset)
+
+    # 解析在落库前完成，用户看到的状态就是真实结果，不存在一直卡在 pending 的中间态
+    outcome = document_parser.parse_document(path, expected_mime)
+    asset.parse_status = outcome.status
+    asset.parse_message = outcome.message
+    asset.parsed_payload = {
+        "fields": [
+            {"metric_code": item.metric_code, "value": item.value, "raw": item.raw} for item in outcome.fields
+        ]
+    }
+
     await session.commit()
     return asset
 
@@ -81,3 +98,86 @@ async def list_files(session: AsyncSession, user_id: UUID) -> list[dict]:
         }
         for row in rows
     ]
+
+
+async def get_extracted(session: AsyncSession, user_id: UUID, file_id: UUID) -> dict:
+    asset = await chat_repo.file_of(session, user_id, file_id)
+    if asset is None:
+        raise NotFound("文件不存在")
+
+    raw_fields = (asset.parsed_payload or {}).get("fields", [])
+    fields = []
+    for item in raw_fields:
+        definition = METRIC_DEFS.get(item.get("metric_code"))
+        if definition is None:
+            continue
+        fields.append(
+            {
+                "metric_code": item["metric_code"],
+                "label": definition.label,
+                "unit": definition.unit,
+                "value": item["value"],
+                "raw": item.get("raw", ""),
+            }
+        )
+
+    return {
+        "id": str(asset.id),
+        "parse_status": asset.parse_status,
+        "parse_message": asset.parse_message,
+        "fields": fields,
+    }
+
+
+async def apply_extracted(
+    session: AsyncSession,
+    user_id: UUID,
+    file_id: UUID,
+    metric_codes: list[str],
+) -> dict:
+    asset = await chat_repo.file_of(session, user_id, file_id)
+    if asset is None:
+        raise NotFound("文件不存在")
+
+    available = {
+        item["metric_code"]: item["value"]
+        for item in (asset.parsed_payload or {}).get("fields", [])
+        if item.get("metric_code") in METRIC_DEFS
+    }
+    # 只认这份资料里真实识别到的编码，挡住借接口写任意指标的路径
+    unknown = [code for code in metric_codes if code not in available]
+    if unknown:
+        raise InvalidHealthData(f"这份资料里没有这些指标：{'、'.join(unknown)}")
+
+    measured_at = asset.created_at
+    existing = set(
+        await session.scalars(
+            select(HealthMetricRecord.metric_code).where(
+                HealthMetricRecord.user_id == user_id,
+                HealthMetricRecord.source_type == SOURCE_DOCUMENT,
+                HealthMetricRecord.measured_at == measured_at,
+            )
+        )
+    )
+
+    written = 0
+    for code in metric_codes:
+        if code in existing:
+            continue
+        session.add(
+            HealthMetricRecord(
+                user_id=user_id,
+                metric_code=code,
+                value=available[code],
+                unit=METRIC_DEFS[code].unit,
+                measured_at=measured_at,
+                measurement_context={"file_id": str(asset.id)},
+                source_type=SOURCE_DOCUMENT,
+            )
+        )
+        existing.add(code)
+        written += 1
+
+    if written:
+        await session.commit()
+    return {"applied": written, "skipped": len(metric_codes) - written}

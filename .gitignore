@@ -15,6 +15,7 @@ htmlcov/
 
 # 运行时产物
 storage/
+test_storage/
 model_cache/
 backup_data/
 logs/

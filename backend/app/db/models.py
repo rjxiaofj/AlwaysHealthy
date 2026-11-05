@@ -398,6 +398,9 @@ class FileAsset(Base):
     checksum: Mapped[str] = mapped_column(String(64))
     scan_status: Mapped[str] = mapped_column(String(16), default="skipped")
     parse_status: Mapped[str] = mapped_column(String(16), default="pending")
+    # 解析出的候选指标，用户确认前不进指标表
+    parsed_payload: Mapped[dict[str, Any] | None] = mapped_column(Json)
+    parse_message: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

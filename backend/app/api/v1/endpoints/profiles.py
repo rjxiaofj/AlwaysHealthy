@@ -8,7 +8,7 @@ from app.api.deps import current_user, db_session, request_id
 from app.core.response import ok
 from app.db.models import User
 from app.repositories import chat as chat_repo
-from app.schemas.health import MedicalHistoryIn, ProfilePatch
+from app.schemas.health import ApplyExtractedIn, MedicalHistoryIn, ProfilePatch
 from app.services import file_service, profile_service
 
 router = APIRouter(tags=["profile"])
@@ -75,6 +75,38 @@ async def list_documents(
     session: AsyncSession = Depends(db_session),
 ):
     return ok(request, await file_service.list_files(session, user.id))
+
+
+@router.get("/profiles/me/documents/{file_id}/extracted")
+async def get_document_extracted(
+    file_id: UUID,
+    request: Request,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(db_session),
+):
+    return ok(request, await file_service.get_extracted(session, user.id, file_id))
+
+
+@router.post("/profiles/me/documents/{file_id}/apply")
+async def apply_document_extracted(
+    file_id: UUID,
+    payload: ApplyExtractedIn,
+    request: Request,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(db_session),
+):
+    result = await file_service.apply_extracted(session, user.id, file_id, payload.metric_codes)
+    chat_repo.audit(
+        session,
+        actor_user_id=user.id,
+        action="document_apply",
+        resource_type="file_asset",
+        resource_id=str(file_id),
+        result="success",
+        request_id=request_id(request),
+    )
+    await session.commit()
+    return ok(request, result)
 
 
 @router.get("/files/{file_id}/download")

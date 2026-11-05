@@ -263,6 +263,21 @@ export interface FileItem {
   created_at: string
 }
 
+export interface ExtractedField {
+  metric_code: string
+  label: string
+  unit: string
+  value: number
+  raw: string
+}
+
+export interface ExtractedDocument {
+  id: string
+  parse_status: string
+  parse_message: string
+  fields: ExtractedField[]
+}
+
 export interface ConsentRecord {
   id: string
   consent_type: string

@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class RegisterIn(BaseModel):
@@ -123,3 +123,17 @@ class AssessmentOut(BaseModel):
     profile_version: int
     dimensions: list[DimensionOut] = []
     recommendations: list[dict[str, Any]] = []
+
+
+class ApplyExtractedIn(BaseModel):
+    metric_codes: list[str] = Field(min_length=1, max_length=20)
+
+    @field_validator("metric_codes")
+    @classmethod
+    def _dedupe(cls, value: list[str]) -> list[str]:
+        # 重复编码只会让跳过计数变大，这里直接收掉
+        seen: list[str] = []
+        for code in value:
+            if code not in seen:
+                seen.append(code)
+        return seen
