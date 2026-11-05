@@ -545,6 +545,18 @@
 
 两个 `interrupt()` 本来就各自带了阶段 `message`，`_mark_waiting` 一直没用。改成 `fresh_reply or payload["message"]`：本段有新回复用新回复（保住画像阶段的「已记录：…」），没有就用阶段提示。变异验证：改回 `text = reply`，CM-02 红、CM-01 绿。后端 205 → 207 项。
 
+## 2026-11-05 流式请求加固
+
+| 编号 | 输入 | 期望 | 实际 | 失败位置 |
+|---|---|---|---|---|
+| SS-01~06 | 完整帧、半截帧、CRLF、多行 data、无 event、空块 | 切帧结果正确 | 改动前切帧写在 `readStream` 的 while 里，一条都没有单测 | api/stream.ts |
+| SS-03 | 上游把分隔符改成 `\r\n\r\n` | 仍能切出事件 | 改动前 `indexOf('\n\n')` 一个都找不到（`\r\n\r\n` 里没有相邻两个 `\n`），整条流零事件、缓冲区涨到流结束 | 同上 |
+| SS-09 | 流请求返回 401 | 续期后重放 | 改动前 `postStream` 走裸 fetch，没有 `api()` 那层续期。令牌 120 分钟一过，聊天直接失败，同页其他请求却都正常 | api/stream.ts::postStream |
+| SS-10 | 401 且续期失败 | 抛后端中文 message | 改动前 `throw new Error(text)`，`text` 是整个 `{code,message,request_id}` 包，用户气泡里看到一串 JSON | api/stream.ts::readStream |
+| SS-12 | 错误体不是 JSON | 退回「请求失败 502」 | 符合 | 无 |
+
+切帧逻辑抽到 `utils/sse.ts`（`splitSseFrames` / `parseSseFrame`），先 CRLF 归一化再切，最后一段不完整的留在 `rest`。`refreshSession()` 从 client 导出复用模块级 `refreshTask`，并发仍只刷一次。变异验证：去掉归一化 SS-03 红，短路 401 分支 SS-09 红。前端 89 → 103 项。端到端在浏览器里跑了一次真实对话（DeepSeek + 真实 SSE），回复完整。顺带给 `TrendsView` 两栏 grid 加 `items-start`，左栏图表卡片不再被右栏撑高。
+
 ## 已知取舍
 
 1. 知识检索默认走关键词通道。BGE-M3 与 Chroma 的代码保留在 `app/integrations/chroma_client.py`，需要安装 torch 与 chromadb 并下载模型权重后把 `EMBEDDING_BACKEND` 切到 bge。两套索引独立，不混用向量。
@@ -570,3 +582,4 @@
 12. 会话过期是「事后发现」：刷新由请求驱动，用户空闲着令牌过期不会主动续，要等下一次请求拿到 401 才跳转。`LoginView` 的回跳只接受站内绝对路径，底层仍靠 `router.push()` 的兜底重定向，不是唯一防线。
 13. 前后端字段一致性只比字段名，不比类型与可选性。`string` 写成 `number`、后端可空而前端非空，这类抓不到；要比类型得引入 TypeScript 的 AST，代价大于收益。嵌套结构（`ReportDetail.content`、`Recommendation`）也没守卫，靠 `NO_MODEL` 里那几行说明提醒。
 14. echarts 仍占 466 kB（gzip 157）。只做了按需加载让无数据时不下，没有换实现。真要压只能手写 SVG 折线（这条曲线只有一条线加虚线网格）或换更轻的库，前者收益最大但要重做交互。首屏体积这件事目前没有自动化度量，只有构建输出的数字。
+15. 流式请求只对 401 重放，其他错误（500、网络断）不重试：健康咨询是长耗时请求，自动重试有重复生成回复的风险。也没有超时——后端挂着不回时前端一直等，`ChatView` 也没传 `AbortSignal`。流结束时若最后一帧没有空行收尾会被丢掉，当前后端每条事件都带 `\n\n`，实际不触发。

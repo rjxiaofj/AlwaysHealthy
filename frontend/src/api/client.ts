@@ -86,6 +86,14 @@ async function refreshAccess(): Promise<boolean> {
   return refreshTask
 }
 
+/**
+ * 手动续一次令牌。流式请求走的是裸 fetch，不经过 `api()`，要自己调这个。
+ * 并发调用会被 `refreshTask` 合并成一次 `/auth/refresh`。
+ */
+export function refreshSession(): Promise<boolean> {
+  return refreshAccess()
+}
+
 type Query = Record<string, string | number | boolean | null | undefined>
 
 interface RequestOptions {

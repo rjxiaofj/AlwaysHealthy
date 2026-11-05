@@ -123,7 +123,7 @@
 
 每条验证在 `MEMORY.md` 记一行：输入、期望、实际、失败日志位置。失败不记“已修复”，只记现象与根因。
 
-前端改动要跑 `npm test`、`npm run type-check`、`npm run build` 三条。`src/api/client.ts` 与 `src/stores/` 下的改动必须带 `.spec.ts`：这两处坏的 symptom 是跨页面的，靠手点验不完。
+前端改动要跑 `npm test`、`npm run type-check`、`npm run build` 三条。`src/api/client.ts`、`src/api/stream.ts` 与 `src/stores/` 下的改动必须带 `.spec.ts`：这两处坏的 symptom 是跨页面的，靠手点验不完。流式相关的纯逻辑放 `src/utils/sse.ts`，别塞回组件。
 
 改了前端 `types.ts` 或后端 `app/schemas/` 时，`pytest tests/contract` 必须先过。新增前端接口不做映射也不写原因，`test_every_interface_is_accounted_for` 会挂——那不是噪音，是在要求给每个新接口做一次决定。
 

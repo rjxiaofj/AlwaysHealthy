@@ -159,7 +159,9 @@ onMounted(load)
       </div>
     </section>
 
-    <div class="grid gap-4 xl:grid-cols-[1.4fr_0.6fr]">
+    <!-- items-start：不加的话左栏卡片会被右栏（录入表单加感受列表）撑到同样高，
+         图表下面空出一大块，看着像没渲染完 -->
+    <div class="grid items-start gap-4 xl:grid-cols-[1.4fr_0.6fr]">
       <section class="glass card-pad">
         <div class="mb-3 flex flex-wrap gap-2">
           <button

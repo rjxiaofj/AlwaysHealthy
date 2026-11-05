@@ -1,4 +1,5 @@
-import { tokens } from './client'
+import { refreshSession, tokens } from './client'
+import { splitSseFrames } from '@/utils/sse'
 
 const BASE = '/api/v1'
 
@@ -6,8 +7,17 @@ export type StreamHandler = (event: string, data: Record<string, unknown>) => vo
 
 async function readStream(response: Response, onEvent: StreamHandler) {
   if (!response.ok) {
+    // 后端错误是 {code, message, ...} 的 JSON 包。原来直接把整段文本抛出去，
+    // 用户会在气泡里看到一串 {"code":"AUTH_UNAUTHORIZED","message":"…"}
     const text = await response.text().catch(() => '')
-    throw new Error(text || `请求失败 ${response.status}`)
+    let message = text
+    try {
+      const body = JSON.parse(text) as { message?: string }
+      if (body?.message) message = body.message
+    } catch {
+      // 不是 JSON 就按原文给
+    }
+    throw new Error(message || `请求失败 ${response.status}`)
   }
   if (!response.body) throw new Error('浏览器不支持流式响应')
 
@@ -20,30 +30,23 @@ async function readStream(response: Response, onEvent: StreamHandler) {
     if (done) break
     buffer += decoder.decode(value, { stream: true })
 
-    let index = buffer.indexOf('\n\n')
-    while (index >= 0) {
-      const block = buffer.slice(0, index)
-      buffer = buffer.slice(index + 2)
-      let event = 'message'
-      const dataLines: string[] = []
-      block.split('\n').forEach((line) => {
-        if (line.startsWith('event:')) event = line.slice(6).trim()
-        else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim())
-      })
-      if (dataLines.length) {
-        try {
-          onEvent(event, JSON.parse(dataLines.join('\n')))
-        } catch {
-          onEvent(event, { raw: dataLines.join('\n') })
-        }
+    // 切帧的逻辑单独放在 utils/sse.ts：换行符归一化、半个事件留在缓冲区，
+    // 这些用真实流才能验，放在这里就没法写单测了
+    const { frames, rest } = splitSseFrames(buffer)
+    buffer = rest
+    for (const frame of frames) {
+      if (!frame.data) continue
+      try {
+        onEvent(frame.event, JSON.parse(frame.data))
+      } catch {
+        onEvent(frame.event, { raw: frame.data })
       }
-      index = buffer.indexOf('\n\n')
     }
   }
 }
 
-async function postStream(path: string, body: unknown, onEvent: StreamHandler, signal?: AbortSignal) {
-  const response = await fetch(`${BASE}${path}`, {
+async function sendStream(path: string, body: unknown, signal?: AbortSignal) {
+  return fetch(`${BASE}${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -53,6 +56,16 @@ async function postStream(path: string, body: unknown, onEvent: StreamHandler, s
     body: JSON.stringify(body),
     signal,
   })
+}
+
+async function postStream(path: string, body: unknown, onEvent: StreamHandler, signal?: AbortSignal) {
+  let response = await sendStream(path, body, signal)
+  if (response.status === 401) {
+    // 和 api() 一样先续一次再重放。这层原来没有：会话过了两小时，
+    // 聊天会直接失败，而同一个页面上的其他请求都能自动续期
+    const refreshed = await refreshSession()
+    if (refreshed) response = await sendStream(path, body, signal)
+  }
   await readStream(response, onEvent)
 }
 
