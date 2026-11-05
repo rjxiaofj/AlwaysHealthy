@@ -52,6 +52,8 @@
 
 没有改后端，也没有加写入路径。允许用户直接编辑年龄会引入「生日与年龄两个来源打架」的新问题，等真有需求再说。
 
+补这条的时候发现 `ProfileOut` 里根本没有 `age_years` 字段，而 `get_profile` 一直在传 `age_years=profile.age_years`。pydantic 默认 `extra='ignore'`，多出来的构造参数被静默丢掉，所以这个值从来没出现在响应里。补上字段后接口才真的返回它，并加了用例钉住「响应里有这个键」。
+
 ## 三、顺带修的
 
 `TrendsView` 的测量时间框被清空后，`new Date('').toISOString()` 抛 `RangeError`，用户会在提示里看到英文「Invalid time value」。现在先校验再提交，提示「选择测量时间」。

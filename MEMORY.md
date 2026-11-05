@@ -476,6 +476,7 @@
 | AG-01 | 档案无年龄无生日 | 只提示填生日 | 符合 | 无 |
 | AG-02 | 有生日 | 显示年龄并注明按生日算 | 符合 | 无 |
 | AG-03 | 只有对话里报的年龄（`birth_date` 为空） | 也要显示，并提示补生日 | 改动前表单只编辑 `birth_date`，这个年龄在个人中心完全看不到 | ProfileView 基础信息 |
+| AG-04 | GET 档案响应里有没有 `age_years` | 应该有这个键 | 改动前 `ProfileOut` 没有该字段，`get_profile` 传了也被 pydantic 默认的 `extra='ignore'` 静默丢掉，值从来没到过前端 | schemas/health.py::ProfileOut |
 
 `get_profile` 返回的 `age` 是 `age_of(birth_date) or age_years`，两条来源合成一个值，前端靠 `birth_date` 有没有值判断来源即可，不需要后端加字段。没有开放「直接编辑年龄」的入口，避免生日与年龄两个来源打架。
 

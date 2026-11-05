@@ -79,6 +79,14 @@ async def test_clear_metric_like_fields(client, auth, field: str) -> None:
     assert data[field] is None
 
 
+async def test_profile_out_exposes_age_years(client, auth) -> None:
+    data = await get(client, auth)
+
+    # 对话里只报年龄时写的是 age_years，响应模型里没这个字段的话 pydantic 会静默丢掉
+    assert "age_years" in data
+    assert data["age_years"] is None
+
+
 async def test_medical_history_persists(client, auth) -> None:
     created = await client.post(
         "/api/v1/profiles/me/histories",
