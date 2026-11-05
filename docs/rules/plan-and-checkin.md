@@ -53,6 +53,8 @@
 
 调整生效后可以补一句反馈，写 `plan_adjustment_records.user_feedback`。只接受当前生效版本，重复提交覆盖同一条，不追加。反馈不参与风险分级，也不进报告口径。
 
+调整版本沿用原任务结构，任务数不会因为「任务太多」这个原因自己变少。要让计划真变，只能在待确认版本里逐条删任务：`DELETE /plans/{plan_id}/versions/{version_id}/tasks/{task_id}`。删的是草稿里的新行，原版本任务与打卡不动；至少要留一项，删到空会让确认后的计划没有内容。删完不确认等于没删，草稿被放弃时删除一并作废。
+
 ## 回归
 
 `tests/unit/test_plan_validator.py`、`tests/api/test_features.py::test_nh_04_plan_generate_approve_checkin_adjust`。

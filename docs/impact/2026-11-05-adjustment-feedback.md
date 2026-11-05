@@ -10,6 +10,8 @@
 
 三条叠起来的结果：用户点「生成调整版本」后，页面上既不能确认，也不能退回，草稿永远躺在 `versions` 里。`user_feedback` 之所以为空，是因为它依赖的确认动作从来走不到。
 
+再往下一层还有个更实的问题：`adjust` 是把旧任务**原样复制**到新版本，任务标题、日期、时长全不变。就算确认了，用户拿到的计划和原来一模一样。「任务太多想减到每天两项」这句原因只是记在库里，没有任何一行代码去响应它。所以本轮除了补确认出口，还得给用户一个真能改任务的手段：待确认版本里可以逐条删任务。
+
 ## 改动文件
 
 后端
@@ -17,24 +19,27 @@
 - `app/services/plan_service.py`
   - `reject_version` 按来源分流：初次计划的草稿被否，计划一并取消；调整产生的草稿被否，只作废这一版，计划继续用原版本。返回一句给用户看的结论。
   - `detail` 增加 `adjustment`：当前版本由调整产生且已生效时返回原因、状态、创建时间与已有反馈。
+  - `detail` 增加 `pending_version`：待确认版本的版本号、原因与任务清单，前端不必再自己从 `versions` 里推测。
+  - 新增 `remove_draft_task`：只在草稿版本删任务，至少保留一项。
   - 新增 `submit_adjustment_feedback`：只接受当前生效版本，且该版本必须有已通过的调整记录。
   - 新增 `_approved_adjustment`：详情与提交两处共用，避免各写一份过滤条件。
-- `app/schemas/plan.py` 新增 `AdjustmentOut`、`AdjustmentFeedbackIn`，`PlanOut` 加 `adjustment`。
-- `app/api/v1/endpoints/plans.py` 新增 `POST /plans/{plan_id}/versions/{version_id}/reject` 与 `POST /plans/{plan_id}/adjustment-feedback`。拒绝接口返回计划详情，前端不用二次拉取。
+- `app/schemas/plan.py` 新增 `AdjustmentOut`、`PendingVersionOut`、`PendingTaskOut`、`AdjustmentFeedbackIn`，`PlanOut` 加 `adjustment` 与 `pending_version`。
+- `app/api/v1/endpoints/plans.py` 新增 `POST /plans/{plan_id}/versions/{version_id}/reject`、`DELETE /plans/{plan_id}/versions/{version_id}/tasks/{task_id}` 与 `POST /plans/{plan_id}/adjustment-feedback`。拒绝与删除都返回计划详情，前端不用二次拉取。
 
 前端
 
 - `api/types.ts` 新增 `PlanAdjustment`，`Plan.adjustment` 可空。
 - `api/index.ts` 新增 `planApi.adjustmentFeedback` 与 `planApi.rejectVersion`。
 - `views/PlansView.vue`
-  - 待确认版本改为从 `versions` 里找 `status === 'draft'`，不再依赖 `plan.status`。
-  - `approve()` 传待确认版本的 id。
-  - 待确认时显示一行说明与两个出口：确认启用、放弃这次调整或取消计划。
+  - 待确认版本改为读接口返回的 `pending_version`，不再依赖 `plan.status`。
+  - `approve()` 与放弃操作都传待确认版本的 id。
+  - 待确认时显示一行说明、两个出口，以及这一版的任务清单，前六项带删除按钮。
   - 调整生效后显示「这次调整合适吗」，三个快捷选项加一句可选补充；已有反馈时只展示那句话。
 
 测试
 
 - `tests/regression/test_plan_adjustment_feedback.py` 10 项：生效后反馈、重复提交覆盖、未生效版本拒绝、原生版本拒绝、他人计划 404、空白反馈 422、放弃调整后计划仍在跑、初次草稿被否计划取消、重复拒绝 409、计划不存在 404。
+- `tests/regression/test_plan_draft_task.py` 6 项：删一条后待确认任务减一、确认后任务数同步减少、删到只剩一条拒绝、已生效版本任务拒绝删除、任务不存在 404、他人计划 404。
 
 ## 依赖的公共方法
 
