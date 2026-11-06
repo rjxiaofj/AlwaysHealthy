@@ -84,11 +84,11 @@ class GraphService:
         async with SessionLocal() as session:
             conversation = await conversation_service.get_conversation(session, user_id, conversation_id)
             await conversation_service.add_message(session, conversation, "user", content)
-            # 用户在待确认时又发了一条新消息：旧确认卡片就此作废，否则它还能把
-            # 新断点当成旧 run 继续（checkpointer 是按会话存的，不按 run 存）
-            expired = await chat_repo.expire_pending_runs(session, conversation.id)
-            if expired:
-                log.info("expired pending runs conversation_id=%s count=%s", conversation.id, expired)
+            # 用户又发了一条新消息：同会话所有活 run 就此作废。checkpointer 按会话
+            # 存一份断点，不按 run 存，留着任何一条旧 run 都可能把新断点接错
+            superseded = await chat_repo.cancel_live_runs(session, conversation.id)
+            if superseded:
+                log.info("cancelled live runs conversation_id=%s count=%s", conversation.id, superseded)
             run = WorkflowRun(
                 conversation_id=conversation.id,
                 thread_id=conversation.thread_id,
@@ -137,7 +137,6 @@ class GraphService:
                     },
                 )
                 return
-            conversation = await conversation_service.get_conversation(session, user_id, run.conversation_id)
             if payload.approval_type == "plan" and payload.decision == "approve":
                 if not payload.business_id or not payload.version_id:
                     yield (
@@ -145,10 +144,44 @@ class GraphService:
                         {"run_id": str(run_id), "code": "RUN_NOT_RESUMABLE", "message": "缺少要确认的计划版本，请重新发起对话"},
                     )
                     return
-                await plan_service.approve(session, user_id, payload.business_id, payload.version_id)
-            elif payload.approval_type == "plan" and payload.decision == "reject":
-                if payload.business_id and payload.version_id:
-                    await plan_service.reject_version(session, user_id, payload.business_id, payload.version_id)
+
+            # 原子抢占确认权：两个标签页同时点同一张卡片时，两边 SELECT 看到的都是
+            # waiting_user，Python 层的判断挡不住，只有先落库的那条 UPDATE 能抢到
+            if not await chat_repo.claim_resume(session, run_id):
+                yield (
+                    "run_error",
+                    {
+                        "run_id": str(run_id),
+                        "code": "RUN_NOT_RESUMABLE",
+                        "message": "这次确认已被处理，请刷新后重试",
+                    },
+                )
+                return
+            # 抢占立刻落库，另一个标签的 claim 才不会也看到 waiting_user
+            await session.commit()
+
+            try:
+                conversation = await conversation_service.get_conversation(session, user_id, run.conversation_id)
+                if payload.approval_type == "plan" and payload.decision == "approve":
+                    await plan_service.approve(session, user_id, payload.business_id, payload.version_id)
+                elif payload.approval_type == "plan" and payload.decision == "reject":
+                    if payload.business_id and payload.version_id:
+                        await plan_service.reject_version(session, user_id, payload.business_id, payload.version_id)
+            except Exception as exc:
+                # 抢占已落库，前置校验失败要把 run 收口，不能留一条没人跑的 running
+                log.warning("resume precheck failed run_id=%s err=%s", run_id, exc)
+                await session.rollback()
+                await chat_repo.cancel_run(session, run_id, "RESUME_PRECHECK_FAILED")
+                await session.commit()
+                yield (
+                    "run_error",
+                    {
+                        "run_id": str(run_id),
+                        "code": "RUN_NOT_RESUMABLE",
+                        "message": "这次确认无法继续，请重新发起对话",
+                    },
+                )
+                return
             meta = run.meta or {}
             ctx = RunContext(
                 run_id=run.id,
@@ -157,7 +190,6 @@ class GraphService:
                 plan_id=UUID(meta["plan_id"]) if meta.get("plan_id") else None,
                 plan_version_id=UUID(meta["plan_version_id"]) if meta.get("plan_version_id") else None,
             )
-            run.status = "running"
             await session.commit()
 
         decision = {"decision": payload.decision, "feedback": payload.feedback or ""}
@@ -208,6 +240,13 @@ class GraphService:
                 },
             )
             return
+        except (asyncio.CancelledError, GeneratorExit):
+            # 前端 abort / 关标签页时 Starlette 取消 StreamingResponse 的生成器，抛的是
+            # CancelledError 或 GeneratorExit，两者都是 BaseException，下面的
+            # except Exception 接不住。不收口的话这条 run 会永远挂在 running
+            log.info("graph run cancelled run_id=%s", ctx.run_id)
+            await self._cancel(ctx, "CLIENT_DISCONNECTED")
+            raise
         except Exception as exc:
             log.exception("graph run failed run_id=%s", ctx.run_id)
             await self._fail(ctx, str(exc))
@@ -388,6 +427,10 @@ class GraphService:
     async def _mark_waiting(self, ctx: RunContext, values: dict[str, Any], reply: str) -> None:
         async with SessionLocal() as session:
             run = await session.get(WorkflowRun, ctx.run_id)
+            # cancelled 是终态：新一轮已经开跑、或客户端已经断连，这条流迟到的收尾
+            # 不能把状态改回 waiting_user，也不能再往会话里塞一张没人该点的确认卡片
+            if run is not None and run.status == "cancelled":
+                return
             if run:
                 run.status = "waiting_user"
                 run.meta = {
@@ -410,8 +453,11 @@ class GraphService:
 
     async def _finish(self, ctx: RunContext, values: dict[str, Any], reply: str) -> None:
         async with SessionLocal() as session:
-            await self._save_assessment(session, ctx, values)
             run = await session.get(WorkflowRun, ctx.run_id)
+            # 用户已经发新消息或断连，这条流的迟到回复不该再出现，更不能把它改成 completed
+            if run is not None and run.status == "cancelled":
+                return
+            await self._save_assessment(session, ctx, values)
             if run:
                 run.status = "completed" if values.get("workflow_status") != "failed" else "failed"
                 run.completed_at = datetime.now(UTC)
@@ -444,9 +490,24 @@ class GraphService:
     async def _fail(self, ctx: RunContext, message: str, code: str = "GRAPH_EXECUTION_ERROR") -> None:
         async with SessionLocal() as session:
             run = await session.get(WorkflowRun, ctx.run_id)
+            # 取消原因比这条流的失败原因更该留档，failed 不能盖掉 cancelled
+            if run is not None and run.status == "cancelled":
+                return
             if run:
                 run.status = "failed"
                 run.error_code = code
                 run.completed_at = datetime.now(UTC)
                 run.meta = {**(run.meta or {}), "error": message[:200]}
             await session.commit()
+
+    async def _cancel(self, ctx: RunContext, code: str) -> None:
+        """客户端断连后收口：只把还在 running 的 run 改成 cancelled。
+
+        这里特意走条件 UPDATE 而不是 session.get 后再赋值——断连那一刻可能
+        已经有新一轮把这条 run 收掉了，不能把别人的终态覆盖成 cancelled。
+        """
+        async with SessionLocal() as session:
+            cancelled = await chat_repo.cancel_run(session, ctx.run_id, code)
+            await session.commit()
+            if cancelled:
+                log.info("run closed after disconnect run_id=%s code=%s", ctx.run_id, code)

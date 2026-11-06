@@ -1,7 +1,7 @@
 from datetime import UTC, date, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
@@ -118,25 +118,58 @@ async def runs_of_conversation(session: AsyncSession, conversation_id: UUID) -> 
     return list(rows)
 
 
-async def expire_pending_runs(session: AsyncSession, conversation_id: UUID) -> int:
-    """新一轮开始前，把同会话还停在「待确认」的旧 run 收掉。
+# 一个会话同时只允许一条活 run：checkpointer 按 conversation.thread_id 只存一份
+# 断点，两条活 run 会互相把对方的状态接错
+LIVE_RUN_STATUSES = ("running", "waiting_user")
+
+
+async def cancel_live_runs(session: AsyncSession, conversation_id: UUID) -> int:
+    """新一轮开始前，把同会话还活着的旧 run 全部收成 cancelled。
 
     LangGraph 的 checkpointer 按 conversation.thread_id 只存一份断点，同会话所有
-    run 共用它。旧确认卡片留着的话，点下去会把新一轮的断点当成旧 run 继续，
-    旧 run 又被改回 running，workflow_runs 与 checkpointer 两边就对不上了。
-    只动 waiting_user：还在 running 的那条可能真的在跑，收口由它自己的 _finish/_fail 负责。
+    run 共用它。只收 waiting_user 不够：旧 run 仍在 running 时用户又发一条消息，
+    它晚一步走到 interrupt 会把自己写成 waiting_user，可那时 checkpointer 里的
+    断点已经属于新一轮，resume 守卫会放行，把新状态接到旧 run 上。
+
+    条件更新只碰活状态，completed/failed/cancelled 这些终态留作审计。
     """
-    rows = await session.scalars(
-        select(WorkflowRun).where(
+    result = await session.execute(
+        update(WorkflowRun)
+        .where(
             WorkflowRun.conversation_id == conversation_id,
-            WorkflowRun.status == "waiting_user",
+            WorkflowRun.status.in_(LIVE_RUN_STATUSES),
         )
+        .values(status="cancelled", completed_at=datetime.now(UTC), error_code="SUPERSEDED"),
+        execution_options={"synchronize_session": False},
     )
-    pending = list(rows)
-    for run in pending:
-        run.status = "cancelled"
-        run.completed_at = datetime.now(UTC)
-    return len(pending)
+    return result.rowcount or 0
+
+
+async def cancel_run(session: AsyncSession, run_id: UUID, code: str) -> bool:
+    """断连/前置校验失败时把仍挂在 running 的 run 收口，终态一律不覆盖。"""
+    result = await session.execute(
+        update(WorkflowRun)
+        .where(WorkflowRun.id == run_id, WorkflowRun.status == "running")
+        .values(status="cancelled", completed_at=datetime.now(UTC), error_code=code),
+        execution_options={"synchronize_session": False},
+    )
+    return bool(result.rowcount)
+
+
+async def claim_resume(session: AsyncSession, run_id: UUID) -> bool:
+    """原子抢占确认权：waiting_user -> running，只有一条请求能拿到。
+
+    两个标签页同时点同一张确认卡片时，两边各自 SELECT 看到的都是 waiting_user，
+    Python 里的 `run.status != "waiting_user"` 判断挡不住。把状态转移下推成带
+    条件的 UPDATE，用 rowcount 判定谁抢到，抢不到的不能往同一 thread 打第二次 resume。
+    """
+    result = await session.execute(
+        update(WorkflowRun)
+        .where(WorkflowRun.id == run_id, WorkflowRun.status == "waiting_user")
+        .values(status="running"),
+        execution_options={"synchronize_session": False},
+    )
+    return bool(result.rowcount)
 
 
 async def emergency_events_of(session: AsyncSession, user_id: UUID, limit: int = 20) -> list[EmergencyEvent]:

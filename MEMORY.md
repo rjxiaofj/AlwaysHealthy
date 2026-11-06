@@ -698,6 +698,20 @@ CI 上一向是绿的、只要 25 秒，因为 `.env` 不入库、密钥为空�
 - **趋势图日期对齐**：推翻 11-05「不做日期对齐」的取舍。原来各序列按点数独立铺满，点数不等时同一天的测量会错开半张图。改为共享日期轴（所有序列日期并集、归一到天），缺测不插值、同日多次测量共用 x、刻度从共享轴生成、几何层自己按时间排序。`ChartPointLayout` 加 `date`，提示框列出该天所有序列的实测值并把同日点一起高亮。同日多次测量造成「相邻点 x 相同」的零间距段，直线与贝塞尔两条分支都加了 NaN 守卫。前端 182 → 192 项，三轮变异分别挂 4/2/1 条。跨量纲 Y 轴取舍不变。
 - **checkpointer 断点一致性（真库验完）**：Docker 恢复后在 `AsyncPostgresSaver` 上实测——`_fail` 只写 `workflow_runs`、图仍停在 interrupt；同 `thread_id` 再发消息会从 START 重跑覆盖断点；对 failed run 调 resume 能复活旧断点。根因是 checkpointer 按会话存、`workflow_runs` 按 run 存。修：`expire_pending_runs()` 在新一轮前把同会话 `waiting_user` 收成 `cancelled`，`resume_run` 只放行 `waiting_user` 否则出 `RUN_NOT_RESUMABLE`，找不到出 `RUN_NOT_FOUND`（原来是裸 return + 空 SSE）；前端 `send()` 与 `run_error` 都清确认卡片。离线回归 6 条 + 前端 2 条，五轮变异挂 2/2/1/1/1。另建 `ah_verify` 库跑完整 app 端到端确认 `checkpoints` 落库、旧 run `cancelled`、旧卡片被拒，验完删库。后端 285 → 291、前端 192 → 194。
 
+## 2026-11-06 workflow_runs 生命周期收口
+
+清理 `TaskList` 时发现 10 条早期 pending 全是陈旧任务（#1~#8 总任务、#12 体积预算、#13 图表渲染测试，产物都已存在），核对后统一标记完成，再从源码里找真实缺口。三个连带缺陷：
+
+- **断连孤儿**：前端 abort / 关标签页时 Starlette 取消 `StreamingResponse` 生成器，抛 `CancelledError` 或 `GeneratorExit`（都是 `BaseException`），`_stream` 原来只 catch `TimeoutError` / `Exception`，接不住，run 永远 `running`。新增 `except (asyncio.CancelledError, GeneratorExit)` → `_cancel` → `CLIENT_DISCONNECTED`。**关键坑**：`asyncio.timeout` 内部也用 `CancelledError`，取消分支必须放在 `except TimeoutError` 之后，`__aexit__` 会先把内部超时转成 `TimeoutError`；LC-03 专守这个顺序。
+- **cancelled 复活**：`_finish` / `_fail` / `_mark_waiting` 开头加 `cancelled` 终态守卫，不改状态、不追加消息。旧 `running` 被顶替后仍可能走到 interrupt 把自己写回 `waiting_user`。
+- **重叠窗口 + 双标签**：`expire_pending_runs` → `cancel_live_runs`，活状态扩到 `running` + `waiting_user`（`SUPERSEDED`）；`resume_run` 的 `waiting_user → running` 下推成条件 UPDATE `claim_resume` 按 `rowcount` 抢占并立刻 commit，抢不到回 `RUN_NOT_RESUMABLE`；前置校验（计划版本失效）失败时 `rollback` + `RESUME_PRECHECK_FAILED` 收口，不留孤儿。
+
+三处条件更新都带 `execution_options={"synchronize_session": False}` 走纯 SQL，避免 ORM 同步/RETURNING 干扰 identity map 里已加载的 `run`。`plan_service.approve/reject_version` 内部各自 commit，所以 CAS 必须自己先落库才对第二个标签可见。
+
+新增 `backend/tests/regression/test_run_lifecycle.py` 10 条（LC-01~10），用 `_HangGraph`（吐一个节点后永久挂住）模拟断连，不需要 Docker。`_message_count` 必须按 `conversation_id` 过滤——测试库全量用例共用，单跑文件时是 0、跑全量时是 178，第一版无条件 count 造成 3 条假红。后端 **301 passed**，前端 194 / `vue-tsc` / build / `npm run size` 全绿。变异 6/6 被捕获。详见 `docs/impact/2026-11-06-run-lifecycle.md`。
+
+残留：`cancelled` 仍不删 checkpointer 旧断点；取消状态**不会中止已在跑的图**，那条 `astream` 仍会跑到 `asyncio.timeout` 预算上限并继续写同一 thread 的断点，真正隔离需要按 `thread_id` 串行的执行锁（要跨 150s LLM 调用，本轮没引入）；`cancel_live_runs` 会顶掉同会话所有 `running`，单实例部署成立，多实例跨进程并发不成立。
+
 ## 已知取舍
 
 
@@ -727,4 +741,4 @@ CI 上一向是绿的、只要 25 秒，因为 `.env` 不入库、密钥为空�
 15. 流式请求只对 401 重放，其他错误（500、网络断）不重试：健康咨询是长耗时请求，自动重试有重复生成回复的风险。时间上限三层：前端空闲 45 秒、前端总时长 180 秒（靠 abort 打断 fetch，连「等响应头」阶段一起管住）、后端工作流按运行类型分档（评估/调整计划长链 `WORKFLOW_TIMEOUT_LONG` 默认 150，咨询/打卡/查报告短链 `WORKFLOW_TIMEOUT_SHORT` 默认 60，先于前端收口把 run 标成 failed）。都是硬上限，真需要更久的长咨询会被截断。流结束时若最后一帧没有空行收尾仍会被丢掉，当前后端每条事件都带 `\n\n`，实际不触发。
 16. 离开聊天页会 abort 在跑的流，已收到的 token 保留在气泡里，不会补全成完整回复；后台也没有断点续流，回来只能重新发一次。`controller` 是模块级单例，同一时刻只允许一条流，重发会掐掉上一条——这是有意的，否则晚到的 token 会拼进新消息。
 17. 测试永远拿不到模型：`conftest.py` 把 `LLM_API_KEY` 清空。想用真实模型验一遍聊天链路，得手动注释掉那一行再单独跑用例（或直接在浏览器里跑端到端）。这样换来的是测试与 CI 完全一致、不花钱、不随模型输出飘。
-18. `workflow_runs` 与 LangGraph checkpointer 的粒度不同：前者按 run 一行，后者按 `conversation.thread_id` 一份断点。新一轮开始前会把同会话的 `waiting_user` 旧 run 收成 `cancelled`，`resume_run` 也只放行 `waiting_user`，所以旧确认卡片不会把新断点接回旧 run。但 `cancelled` 不删 checkpointer 里的旧断点（真库实测该 thread 的 checkpoint 行数仍会增长），靠新一轮从 `START` 重跑覆盖；重叠流之间仍有窗口。前端主动 abort 后后端那条 `running` run 仍可能悬挂——`start_run` 故意不动 `running`，要彻底解决得让 `_finish/_fail/_mark_waiting` 都尊重 `cancelled`。在这条链路上跑真 Postgres 需要 `SelectorEventLoop`（psycopg/asyncpg 不支持 Windows 的 Proactor），完整 app 可用 `httpx.ASGITransport` 进程内起，不必占用端口。
+18. `workflow_runs` 与 LangGraph checkpointer 的粒度不同：前者按 run 一行，后者按 `conversation.thread_id` 一份断点。11-06 起同会话只允许一条活 run：`start_run` 前的 `cancel_live_runs` 把 `running` + `waiting_user` 全收成 `cancelled`（`SUPERSEDED`），`resume_run` 用条件 UPDATE 原子抢占 `waiting_user → running`，`_finish/_fail/_mark_waiting` 都尊重 `cancelled` 终态，断连也会把 `running` 收成 `CLIENT_DISCONNECTED`。仍剩两处：`cancelled` 不删 checkpointer 旧断点（真库实测该 thread 的 checkpoint 行数仍会增长，靠新一轮从 `START` 重跑覆盖）；取消状态不中止已在跑的 `astream`，它会继续跑到超时预算并继续写同一 thread，真正隔离要按 `thread_id` 加执行锁。在这条链路上跑真 Postgres 需要 `SelectorEventLoop`（psycopg/asyncpg 不支持 Windows 的 Proactor），完整 app 可用 `httpx.ASGITransport` 进程内起，不必占用端口。
