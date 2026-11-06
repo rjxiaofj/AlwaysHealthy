@@ -9,6 +9,7 @@ import LoginView from '@/views/LoginView.vue'
 /**
  * 登录页身份选项卡：两个通道的文案、请求参数、跳转与错误提示都要跟着身份走。
  * 切换身份不能把上一个通道的密码/错误/注册态带过去。
+ * 卡片尺寸与节点也要稳定：外层垂直居中，卡片一变高整页就会上下跳。
  */
 const mocks = vi.hoisted(() => ({
   login: vi.fn(),
@@ -216,5 +217,60 @@ describe('登录页身份选项卡', () => {
 
     expect(wrapper.text()).toContain('该账号不是管理员，请切换为「用户登录」')
     expect(router.currentRoute.value.path).toBe('/login')
+  })
+})
+
+describe('登录页切换身份时的布局稳定', () => {
+  it('卡片固定高度，切换身份只换文案不增删节点', async () => {
+    const { wrapper } = await mountLogin()
+    expect(wrapper.find('[data-testid="login-card"]').classes()).toContain('h-[664px]')
+
+    const username = wrapper.find('#username').element
+    const password = wrapper.find('#password').element
+    const submit = wrapper.find('[data-testid="login-submit"]').element
+    const note = wrapper.find('[data-testid="login-footer-note"]')
+    expect(note.text()).toContain('健康数据仅本人可见')
+
+    await tabAt(wrapper, 1).trigger('click')
+
+    expect(wrapper.find('#username').element).toBe(username)
+    expect(wrapper.find('#password').element).toBe(password)
+    expect(wrapper.find('[data-testid="login-submit"]').element).toBe(submit)
+    expect(wrapper.find('[data-testid="login-footer-note"]').element).toBe(note.element)
+    expect(note.text()).toContain('管理入口')
+    expect(wrapper.findAll('form input')).toHaveLength(2)
+  })
+
+  it('错误行常驻占位，出现与清空都不增删节点', async () => {
+    mocks.login.mockRejectedValueOnce(new ApiError('X', '登录失败', 400))
+    const { wrapper } = await mountLogin()
+    const error = wrapper.find('[data-testid="login-error"]')
+    expect(error.exists()).toBe(true)
+    expect(error.text()).toBe('')
+
+    await fill(wrapper)
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(error.text()).toBe('登录失败')
+
+    await tabAt(wrapper, 1).trigger('click')
+    expect(wrapper.find('[data-testid="login-error"]').element).toBe(error.element)
+    expect(error.text()).toBe('')
+  })
+
+  it('从管理员注册切回用户登录也不留下额外输入或节点', async () => {
+    const { wrapper } = await mountLogin()
+    await tabAt(wrapper, 1).trigger('click')
+    await buttonWith(wrapper, '管理员注册').trigger('click')
+    expect(wrapper.find('#admin-code').exists()).toBe(true)
+    const note = wrapper.find('[data-testid="login-footer-note"]').element
+    const submit = wrapper.find('[data-testid="login-submit"]').element
+
+    await tabAt(wrapper, 0).trigger('click')
+
+    expect(wrapper.find('#admin-code').exists()).toBe(false)
+    expect(wrapper.findAll('form input')).toHaveLength(2)
+    expect(wrapper.find('[data-testid="login-footer-note"]').element).toBe(note)
+    expect(wrapper.find('[data-testid="login-submit"]').element).toBe(submit)
   })
 })

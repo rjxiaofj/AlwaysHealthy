@@ -45,6 +45,12 @@ const switchLabel = computed(() => {
   if (mode.value === 'register') return '已有账号，去登录'
   return isAdminTab.value ? '没有管理员账号？管理员注册' : '没有账号，去注册'
 })
+// 两种身份都常驻这一行：用 v-if 增删节点会让卡片变高，外层垂直居中会把整页上下推
+const footerNote = computed(() =>
+  isAdminTab.value
+    ? '管理入口只管账号与平台安全，不查看任何人的健康档案。'
+    : '健康数据仅本人可见，管理员也不查看任何人的健康档案。',
+)
 
 function switchTab(next: AccountRole) {
   if (tab.value === next) return
@@ -115,7 +121,10 @@ async function submit() {
         </div>
       </section>
 
-      <section class="glass-strong p-6 lg:p-8">
+      <section
+        class="glass-strong flex h-[664px] max-h-[calc(100vh-3rem)] flex-col overflow-y-auto p-6 lg:p-8"
+        data-testid="login-card"
+      >
         <div class="segment" role="tablist" aria-label="登录身份">
           <button
             v-for="item in tabs"
@@ -131,10 +140,10 @@ async function submit() {
           </button>
         </div>
 
-        <h2 class="mt-6 text-[18px] font-semibold">{{ heading }}</h2>
-        <p class="mt-1 text-[12px]" :style="{ color: 'var(--color-text-secondary)' }">{{ subheading }}</p>
+        <h2 class="mt-6 min-h-[26px] text-[18px] font-semibold">{{ heading }}</h2>
+        <p class="mt-1 min-h-[36px] text-[12px]" :style="{ color: 'var(--color-text-secondary)' }">{{ subheading }}</p>
 
-        <form class="mt-6 flex flex-col gap-4" @submit.prevent="submit">
+        <form class="mt-6 flex flex-1 flex-col gap-4" @submit.prevent="submit">
           <div>
             <label class="label" for="username">用户名</label>
             <input id="username" v-model="username" class="field" autocomplete="username" placeholder="字母数字下划线" />
@@ -161,11 +170,19 @@ async function submit() {
               placeholder="由部署方配置"
             />
             <p class="mt-1.5 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
-              邀请码来自部署环境的 ADMIN_REGISTRATION_CODE，未配置时不开放管理员注册。
+              邀请码由部署方配置，未配置时不开放管理员注册。
             </p>
           </div>
-          <p v-if="error" class="text-[12px]" :style="{ color: 'var(--color-danger)' }">{{ error }}</p>
-          <button class="btn btn-primary w-full" type="submit" :disabled="auth.pending">
+          <!-- 错误行常驻占位：出现/清空时不改变卡片高度，也不把提交按钮往下顶 -->
+          <p
+            class="min-h-[18px] text-[12px]"
+            :style="{ color: 'var(--color-danger)' }"
+            role="alert"
+            data-testid="login-error"
+          >
+            {{ error }}
+          </p>
+          <button class="btn btn-primary mt-auto w-full" type="submit" :disabled="auth.pending" data-testid="login-submit">
             {{ submitLabel }}
           </button>
         </form>
@@ -178,8 +195,12 @@ async function submit() {
         >
           {{ switchLabel }}
         </button>
-        <p v-if="isAdminTab" class="mt-2 text-center text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
-          管理入口只看服务状态与安全事件，不查看任何人的健康档案。
+        <p
+          class="mt-2 min-h-[34px] text-center text-[11px]"
+          :style="{ color: 'var(--color-text-tertiary)' }"
+          data-testid="login-footer-note"
+        >
+          {{ footerNote }}
         </p>
       </section>
     </div>
