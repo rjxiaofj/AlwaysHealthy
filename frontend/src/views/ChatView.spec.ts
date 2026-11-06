@@ -149,3 +149,93 @@ describe('聊天页渲染', () => {
     expect(useToastStore(pinia).items.map((item) => item.text)).toContain('请求失败 502')
   })
 })
+
+describe('确认卡片', () => {
+  function triggerConfirmation(onEvent: (event: string, data: Record<string, unknown>) => void) {
+    onEvent('confirmation_required', {
+      run_id: 'r1',
+      approval_type: 'profile',
+      message: '请确认以下信息是否正确',
+      summary: { 年龄: '39', 身高: '175' },
+      plan_id: null,
+      plan_version_id: null,
+    })
+  }
+
+  it('confirmation_required 事件弹出确认卡片，带摘要', async () => {
+    mocks.streamMessage.mockImplementation(async (_id: string, _content: string, onEvent: (event: string, data: Record<string, unknown>) => void) => {
+      triggerConfirmation(onEvent)
+    })
+
+    const { wrapper } = await mountChat()
+    await sendMessage(wrapper, '我 39 岁，身高 175')
+
+    expect(wrapper.text()).toContain('请确认以下信息是否正确')
+    expect(wrapper.text()).toContain('年龄')
+  })
+
+  it('approve 调用 streamResume 并清掉确认卡片', async () => {
+    mocks.streamMessage.mockImplementation(async (_id: string, _content: string, onEvent: (event: string, data: Record<string, unknown>) => void) => {
+      triggerConfirmation(onEvent)
+    })
+    mocks.streamResume.mockResolvedValue(undefined)
+
+    const { wrapper } = await mountChat()
+    await sendMessage(wrapper, '我 39 岁')
+
+    await wrapper.findAll('button').find((b) => b.text().includes('信息正确'))!.trigger('click')
+    await flushPromises()
+
+    expect(mocks.streamResume).toHaveBeenCalledTimes(1)
+    const args = mocks.streamResume.mock.calls[0]
+    expect(args[0]).toBe('r1')
+    expect(args[1].decision).toBe('approve')
+    expect(args[1].approval_type).toBe('profile')
+    // 确认卡片消失：message 文案不再出现（外层 section 也是 glass-strong，不能按类名找）
+    expect(wrapper.text()).not.toContain('请确认以下信息是否正确')
+  })
+
+  it('reject 调用 streamResume 并清掉确认卡片', async () => {
+    mocks.streamMessage.mockImplementation(async (_id: string, _content: string, onEvent: (event: string, data: Record<string, unknown>) => void) => {
+      triggerConfirmation(onEvent)
+    })
+    mocks.streamResume.mockResolvedValue(undefined)
+
+    const { wrapper } = await mountChat()
+    await sendMessage(wrapper, '我 39 岁')
+
+    await wrapper.findAll('button').find((b) => b.text().trim() === '放弃')!.trigger('click')
+    await flushPromises()
+
+    const args = mocks.streamResume.mock.calls[0]
+    expect(args[1].decision).toBe('reject')
+    expect(wrapper.text()).not.toContain('请确认以下信息是否正确')
+  })
+
+  it('modify 没填反馈时先展开输入框，不调 streamResume；填了再提交', async () => {
+    mocks.streamMessage.mockImplementation(async (_id: string, _content: string, onEvent: (event: string, data: Record<string, unknown>) => void) => {
+      triggerConfirmation(onEvent)
+    })
+    mocks.streamResume.mockResolvedValue(undefined)
+
+    const { wrapper } = await mountChat()
+    await sendMessage(wrapper, '我 39 岁')
+
+    // 第一次点「需要补充」：没填反馈，只展开 textarea，不发起 resume
+    const modifyBtn = () => wrapper.findAll('button').find((b) => b.text().includes('需要补充'))!
+    await modifyBtn().trigger('click')
+    await flushPromises()
+    expect(mocks.streamResume).not.toHaveBeenCalled()
+    const textarea = wrapper.find('textarea[placeholder="说明需要调整的地方"]')
+    expect(textarea.exists()).toBe(true)
+
+    // 填上反馈再点：这次发起 modify
+    await textarea.setValue('身高其实 178')
+    await modifyBtn().trigger('click')
+    await flushPromises()
+
+    const args = mocks.streamResume.mock.calls[0]
+    expect(args[1].decision).toBe('modify')
+    expect(args[1].feedback).toBe('身高其实 178')
+  })
+})

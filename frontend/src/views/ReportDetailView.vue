@@ -50,8 +50,9 @@ async function printPdf() {
     }
     win.document.write(html)
     win.document.close()
-    // 等新窗口里的内容与样式就绪再触发打印，否则可能打印出空白页
-    win.addEventListener('load', () => setTimeout(() => win.print(), 300))
+    // document.write 是同步的，close 时文档已经就绪；这里再去 addEventListener('load')
+    // 会永远收不到事件（load 早触发过了），导致 print 不执行。写完直接触发打印即可。
+    setTimeout(() => win.print(), 300)
   } catch (error) {
     toast.error(error instanceof Error ? error.message : '导出失败')
   }
