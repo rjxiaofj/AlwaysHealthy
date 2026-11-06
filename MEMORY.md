@@ -744,7 +744,8 @@ CI 上一向是绿的、只要 25 秒，因为 `.env` 不入库、密钥为空�
 - 事件处置 `open -> resolved` 单向收敛，写 `resolved_at`、幂等；不改描述/级别/发生时间，不删记录、不开放重开。响应字典在 `commit()` 前组装，避免提交后回读 ORM 触发异步会话隐式 IO。
 - **时区坑**：SQLite 存不下时区，刚写的 aware 与读回的 naive 让同一事件在「处置响应」和「列表」里 `resolved_at` 字符串差一个 `+00:00`。`security_repo.as_dict` 统一用 `as_utc(...).isoformat()` 输出带时区的 ISO 串。
 - 前端 `AdminView` 从两张卡片扩成三张，三路 `Promise.allSettled` 各自降级；写操作失败只显示后端 `message`、不误改本地行；当前账号按钮禁用；已处置事件不再给按钮。`vi.mock('@/api')` 要顺带提供 `authApi`，否则 `stores/auth.ts` 的具名导入在 mock 里取不到。
-- 验证：后端 **331 passed**、前端 **220 passed**，typecheck/build/size 全绿（首屏 50.2/58 kB、totalJs 90.4/100 kB）；变异 **5/5 被捕获**（去掉角色判断、去掉自改护栏、事件字典丢键、退回 `Promise.all`、角色不再翻转）。
+- 验证：后端 **331 passed**、前端 **220 passed**，typecheck/build/size 全绿（首屏 50.2/58 kB、totalJs 90.4/100 kB）；变异 **5/5 被捕获**（去掉角色判断、去掉自改护栏、事件字典丢键、退回 `Promise.all`、角色不再翻转）。提交 `39d0954`，CI `42242946785` success。
+- 部署验证：`up -d --build` 重建后三容器 healthy，`/health/live` 200、`/health/ready` 的 database/knowledge 都 up，镜像内含新 `admin_service`。真容器端到端冒烟 **22/22**（注册、401/403、列表白名单、角色提升即时生效、非法角色、禁止改自己、事件生成/处置/幂等、`resolved_at` 时区串）。
 - 测试自身两处假绿也修了：测试库全量共用导致 `count_admins<=1` 不成立，要先给其他账号降权并断言只剩一个 admin；`_audits` 必须按 `resource_id` 过滤，否则别的用例留下的审计行会喂绿。
 
 ## 已知取舍

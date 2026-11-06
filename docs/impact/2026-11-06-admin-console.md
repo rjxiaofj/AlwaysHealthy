@@ -85,6 +85,8 @@
 
 全量：后端 **331 passed**、前端 **220 passed**（212 + 8 条净增），`vue-tsc` / `vite build` / `npm run size` 全绿（首屏 50.2/58 kB、totalJs 90.4/100 kB）。
 
+提交 `39d0954`，CI `42242946785` **success**。Docker 镜像重建后三容器 healthy，`/health/live` 200、`/health/ready` 的 database/knowledge 都是 up，镜像内含 `app/services/admin_service.py`。真容器端到端冒烟 **22/22**：SPA 与 `/api/docs`、普通/管理员注册、未登录 401 与普通用户 403、账号列表分页与字段白名单、角色提升后旧令牌立即生效、非法角色 422、禁止改自己 409、连续失败生成事件、处置收敛与幂等、`resolved_at` 带 UTC 偏移、普通用户不能处置。
+
 变异验证 **5/5 被捕获**：去掉 `admin_user` 角色判断（3 条挂）、去掉禁止改自己角色（1 条挂）、事件字典丢 `resolved_at`（3 条挂）、管理页退回 `Promise.all`（首屏失败用例挂）、角色变更不再翻转角色（写操作用例挂）。脚本跑完无条件还原源码，五个锚点都核对过。
 
 两处测试自己先挂出来的真问题，已修：
