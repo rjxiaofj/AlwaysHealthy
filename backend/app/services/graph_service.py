@@ -84,6 +84,11 @@ class GraphService:
         async with SessionLocal() as session:
             conversation = await conversation_service.get_conversation(session, user_id, conversation_id)
             await conversation_service.add_message(session, conversation, "user", content)
+            # 用户在待确认时又发了一条新消息：旧确认卡片就此作废，否则它还能把
+            # 新断点当成旧 run 继续（checkpointer 是按会话存的，不按 run 存）
+            expired = await chat_repo.expire_pending_runs(session, conversation.id)
+            if expired:
+                log.info("expired pending runs conversation_id=%s count=%s", conversation.id, expired)
             run = WorkflowRun(
                 conversation_id=conversation.id,
                 thread_id=conversation.thread_id,
@@ -112,10 +117,33 @@ class GraphService:
         async with SessionLocal() as session:
             run = await chat_repo.run_of(session, user_id, run_id)
             if run is None:
+                # 之前直接 return，前端只收到一条空的 SSE 流：转圈停了却什么也没说
+                yield (
+                    "run_error",
+                    {"run_id": str(run_id), "code": "RUN_NOT_FOUND", "message": "这次确认的记录不存在"},
+                )
+                return
+            if run.status != "waiting_user":
+                # checkpointer 里的断点可能已经属于同一会话的新一轮了，硬恢复会把
+                # 新状态接在旧 run 上，旧 run 又被改回 running。failed/completed/
+                # cancelled 一律不许复活
+                log.warning("resume rejected run_id=%s status=%s", run_id, run.status)
+                yield (
+                    "run_error",
+                    {
+                        "run_id": str(run_id),
+                        "code": "RUN_NOT_RESUMABLE",
+                        "message": "这次确认已经过期，请重新发起对话",
+                    },
+                )
                 return
             conversation = await conversation_service.get_conversation(session, user_id, run.conversation_id)
             if payload.approval_type == "plan" and payload.decision == "approve":
                 if not payload.business_id or not payload.version_id:
+                    yield (
+                        "run_error",
+                        {"run_id": str(run_id), "code": "RUN_NOT_RESUMABLE", "message": "缺少要确认的计划版本，请重新发起对话"},
+                    )
                     return
                 await plan_service.approve(session, user_id, payload.business_id, payload.version_id)
             elif payload.approval_type == "plan" and payload.decision == "reject":

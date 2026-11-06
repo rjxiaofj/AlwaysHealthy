@@ -75,6 +75,9 @@ function handleEvent(event: string, data: Record<string, unknown>) {
     scrollToBottom()
   } else if (event === 'run_error') {
     toast.error(String(data.message || '执行失败'))
+    // 确认过期被拒、或执行本身失败，卡片都不能再留着让人反复点
+    confirmation.value = null
+    feedbackOpen.value = false
   }
 }
 
@@ -91,6 +94,11 @@ async function send() {
   const content = input.value.trim()
   input.value = ''
   sending.value = true
+  // 待确认时又发了新消息：旧卡片作废。后端会把那条 waiting_user run 标成 cancelled，
+  // 前端若还留着卡片，点下去只会拿到「确认已过期」
+  confirmation.value = null
+  feedbackOpen.value = false
+  feedback.value = ''
   progress.value = '正在连接'
   streamingText.value = ''
   messages.value.push({

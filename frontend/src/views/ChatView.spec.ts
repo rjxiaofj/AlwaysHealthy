@@ -212,6 +212,43 @@ describe('确认卡片', () => {
     expect(wrapper.text()).not.toContain('请确认以下信息是否正确')
   })
 
+  it('待确认时又发新消息，旧确认卡片作废', async () => {
+    mocks.streamMessage.mockImplementation(async (_id: string, _content: string, onEvent: (event: string, data: Record<string, unknown>) => void) => {
+      triggerConfirmation(onEvent)
+    })
+
+    const { wrapper } = await mountChat()
+    await sendMessage(wrapper, '我 39 岁，身高 175')
+    expect(wrapper.text()).toContain('请确认以下信息是否正确')
+
+    // 新一轮没有再弹确认：卡片不该留在页面上让人点一个已经 cancelled 的 run
+    mocks.streamMessage.mockImplementation(async () => {})
+    await sendMessage(wrapper, '再问一句')
+    expect(wrapper.text()).not.toContain('请确认以下信息是否正确')
+  })
+
+  it('恢复被拒时清掉过期卡片（modify 分支自己不会清）', async () => {
+    mocks.streamMessage.mockImplementation(async (_id: string, _content: string, onEvent: (event: string, data: Record<string, unknown>) => void) => {
+      triggerConfirmation(onEvent)
+    })
+    mocks.streamResume.mockImplementation(async (_id: string, _payload: unknown, onEvent: (event: string, data: Record<string, unknown>) => void) => {
+      onEvent('run_error', { code: 'RUN_NOT_RESUMABLE', message: '这次确认已经过期' })
+    })
+
+    const { wrapper, pinia } = await mountChat()
+    await sendMessage(wrapper, '我 39 岁')
+
+    const modifyBtn = () => wrapper.findAll('button').find((b) => b.text().includes('需要补充'))!
+    await modifyBtn().trigger('click')
+    await flushPromises()
+    await wrapper.find('textarea[placeholder="说明需要调整的地方"]').setValue('身高其实 178')
+    await modifyBtn().trigger('click')
+    await flushPromises()
+
+    expect(useToastStore(pinia).items.some((item) => item.text.includes('过期'))).toBe(true)
+    expect(wrapper.text()).not.toContain('请确认以下信息是否正确')
+  })
+
   it('modify 没填反馈时先展开输入框，不调 streamResume；填了再提交', async () => {
     mocks.streamMessage.mockImplementation(async (_id: string, _content: string, onEvent: (event: string, data: Record<string, unknown>) => void) => {
       triggerConfirmation(onEvent)

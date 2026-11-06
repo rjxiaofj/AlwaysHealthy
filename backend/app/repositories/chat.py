@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -116,6 +116,27 @@ async def runs_of_conversation(session: AsyncSession, conversation_id: UUID) -> 
         .order_by(WorkflowRun.started_at.desc())
     )
     return list(rows)
+
+
+async def expire_pending_runs(session: AsyncSession, conversation_id: UUID) -> int:
+    """新一轮开始前，把同会话还停在「待确认」的旧 run 收掉。
+
+    LangGraph 的 checkpointer 按 conversation.thread_id 只存一份断点，同会话所有
+    run 共用它。旧确认卡片留着的话，点下去会把新一轮的断点当成旧 run 继续，
+    旧 run 又被改回 running，workflow_runs 与 checkpointer 两边就对不上了。
+    只动 waiting_user：还在 running 的那条可能真的在跑，收口由它自己的 _finish/_fail 负责。
+    """
+    rows = await session.scalars(
+        select(WorkflowRun).where(
+            WorkflowRun.conversation_id == conversation_id,
+            WorkflowRun.status == "waiting_user",
+        )
+    )
+    pending = list(rows)
+    for run in pending:
+        run.status = "cancelled"
+        run.completed_at = datetime.now(UTC)
+    return len(pending)
 
 
 async def emergency_events_of(session: AsyncSession, user_id: UUID, limit: int = 20) -> list[EmergencyEvent]:
