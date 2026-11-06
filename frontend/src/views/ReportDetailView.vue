@@ -8,6 +8,7 @@ import type { KnowledgeSource, ReportDetail } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
 import RiskBadge from '@/components/RiskBadge.vue'
 import { useToastStore } from '@/stores/toast'
+import { downloadBlob } from '@/utils/download'
 
 const route = useRoute()
 const toast = useToastStore()
@@ -23,12 +24,7 @@ async function download() {
     })
     if (!response.ok) throw new Error('导出失败')
     const blob = await response.blob()
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${report.value.title}.md`
-    link.click()
-    URL.revokeObjectURL(url)
+    downloadBlob(blob, `${report.value.title}.md`)
   } catch (error) {
     toast.error(error instanceof Error ? error.message : '导出失败')
   }

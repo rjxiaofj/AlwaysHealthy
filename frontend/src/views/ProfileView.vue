@@ -5,6 +5,7 @@ import { consentApi, profileApi, reportApi } from '@/api'
 import { tokens } from '@/api/client'
 import type { ConsentRecord, EmergencyEvent, ExtractedDocument, FileItem, Profile, ReportSummary } from '@/api/types'
 import { useToastStore } from '@/stores/toast'
+import { downloadBlob } from '@/utils/download'
 import { ageSource, buildProfilePatch, formFromProfile } from '@/views/profileLogic'
 
 const toast = useToastStore()
@@ -182,12 +183,7 @@ async function downloadFile(item: FileItem) {
     })
     if (!response.ok) throw new Error('下载失败')
     const blob = await response.blob()
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = item.original_filename
-    link.click()
-    URL.revokeObjectURL(url)
+    downloadBlob(blob, item.original_filename)
   } catch (error) {
     toast.error(error instanceof Error ? error.message : '下载失败')
   } finally {
