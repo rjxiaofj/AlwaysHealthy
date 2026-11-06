@@ -338,6 +338,32 @@ describe('多序列对比几何', () => {
     expect(layout.series[0].points).toHaveLength(2)
     expect(layout.series[0].points[0].x).toBe(layout.series[0].points[1].x)
     expect(layout.series[0].points[0].x).toBeCloseTo((46 + (600 - 16)) / 2)
+    // 日期对齐后才会出现「相邻两点 x 相同」的零间距段：两点时是一条垂直直线
+    expect(layout.series[0].line).toContain(' L ')
+    expect(layout.series[0].line).not.toMatch(/NaN|Infinity/)
+  })
+
+  it('三点以上含零间距段时，贝塞尔控制点不会算出 NaN', () => {
+    const layout = buildMultiChart(
+      [
+        {
+          key: 'a',
+          label: 'A',
+          points: [
+            { measured_at: '2026-11-01T08:00:00', value: 1 },
+            { measured_at: '2026-11-01T20:00:00', value: 2 },
+            { measured_at: '2026-11-02T08:00:00', value: 3 },
+          ],
+        },
+      ],
+      { width: 600, height: 260 },
+    )
+
+    const points = layout.series[0].points
+    expect(points[0].x).toBe(points[1].x)
+    expect(points[2].x).toBeGreaterThan(points[1].x)
+    expect(layout.series[0].line).toContain(' C ')
+    expect(layout.series[0].line).not.toMatch(/NaN|Infinity/)
   })
 
   it('全是无效值的序列不会把自己的日期带进共享横轴', () => {
