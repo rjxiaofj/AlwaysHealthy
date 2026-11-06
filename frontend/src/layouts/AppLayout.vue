@@ -39,7 +39,7 @@ onMounted(async () => {
 
 <template>
   <div class="flex min-h-screen w-full gap-5 p-4 lg:p-6">
-    <aside class="glass hidden w-[236px] shrink-0 flex-col p-4 lg:flex">
+    <aside class="glass hidden w-[236px] shrink-0 flex-col p-4 lg:flex lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)] lg:self-start">
       <div class="flex items-center gap-2 px-2 pb-6 pt-2">
         <div class="h-8 w-8 rounded-full" :style="{ background: 'var(--color-primary)' }" />
         <div>
