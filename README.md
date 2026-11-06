@@ -76,7 +76,55 @@ npm run build                      # 产物进 backend 镜像的 /srv/frontend/d
 
 ## 部署
 
-先装 Docker Desktop。安装包放在 `E:\Docker\installer`，程序目录与镜像数据都放 E 盘：
+### 一键部署（Docker 已就绪）
+
+前提只有两个：Docker 引擎在跑（`docker info` 能返回版本号），以及 `deployment/.env` 里的 `JWT_SECRET` 已填。前端构建、数据库迁移、知识库同步都在镜像里自动完成，不需要本地装 Python/Node，也不用先 `npm run build`。
+
+```bash
+# 仓库根目录；已有 .env 就跳过第一行，别把填好的密钥覆盖掉
+test -f deployment/.env || cp deployment/.env.example deployment/.env
+# 编辑 deployment/.env 填 JWT_SECRET（必填，compose 会校验）
+docker compose -f deployment/docker-compose.yml up -d --build
+```
+
+PowerShell 里第一行换成 `if (-not (Test-Path deployment/.env)) { Copy-Item deployment/.env.example deployment/.env }`。生成密钥：
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(36))"
+```
+
+compose 会自动读同目录的 `deployment/.env`，不用额外 `--env-file`。`--build` 触发多阶段构建：`node:22-alpine` 阶段跑 `npm ci && npm run build`，产物拷进 `python:3.13-slim` 的 `/srv/frontend/dist`；容器启动时先 `alembic upgrade head` 再起 uvicorn。首次构建约 5–10 分钟。
+
+检查与访问：
+
+```bash
+docker compose -f deployment/docker-compose.yml ps   # postgres / redis / backend 都 healthy
+curl http://127.0.0.1:8080/health/live              # 200
+```
+
+前端与接口都在 `http://127.0.0.1:8080`，接口文档在 `/api/docs`。容器只绑 127.0.0.1，不对局域网开放。
+
+Windows 下也有现成的一键脚本，额外兜住「找 `docker.exe`、引擎没起就拉起 Docker Desktop、首次生成 `.env`」：
+
+```powershell
+.\deployment\scripts\start.ps1              # 起
+.\deployment\scripts\start.ps1 -Vector      # 带 chroma，用 bge 检索时
+.\deployment\scripts\start.ps1 -Down        # 停
+```
+
+| 目的 | 命令 |
+| --- | --- |
+| 看后端日志 | `docker compose -f deployment/docker-compose.yml logs -f backend` |
+| 改了代码后重建 | `docker compose -f deployment/docker-compose.yml up -d --build` |
+| 只改了 `.env` | `docker compose -f deployment/docker-compose.yml up -d`（重建容器，镜像不用重编） |
+| 停止并保留数据 | `docker compose -f deployment/docker-compose.yml down` |
+| 停止并删库（危险） | 上面加 `-v`，连命名卷一起删 |
+
+`LLM_API_KEY` 留空时降级到规则回答、不调外部模型；要接 DeepSeek 就填进 `deployment/.env` 再 `up -d`。`EMBEDDING_BACKEND=bge` 时还要带 `--profile vector`（或 `start.ps1 -Vector`）把 chroma 拉起来。
+
+### 首次安装 Docker Desktop（Windows）
+
+安装包放在 `E:\Docker\installer`，程序目录与镜像数据都放 E 盘：
 
 ```powershell
 cd deployment\scripts
@@ -88,23 +136,15 @@ cd deployment\scripts
 
 脚本调用安装器时带 `--installation-dir=E:\Docker\Docker` 和 `--wsl-default-data-root=E:\Docker\data`，所以镜像、数据卷、WSL 磁盘都不占 C 盘。没装 WSL2 时脚本会先装并发提示，重启后再跑一次。
 
-安装结束不会立刻有 `ext4.vhdx`，那个文件要等 Docker Desktop 第一次启动、初始化 WSL 发行版时才建出来。安装完当前终端也认不到 `docker` 命令，PATH 要新开终端才刷新，所以下面用脚本起服务，不要手工敲 `docker compose`。
+安装结束不会立刻有 `ext4.vhdx`，那个文件要等 Docker Desktop 第一次启动、初始化 WSL 发行版时才建出来。安装完的**当前终端**认不到 `docker` 命令，PATH 要新开终端才刷新——这时用 `start.ps1` 兜底，它先按 PATH 找 `docker`，找不到再去 `-InstallDir`（默认 `E:\Docker\Docker`）下取 `resources\bin\docker.exe`；新开终端后直接敲上面的 `docker compose` 即可。
 
-```powershell
-cd deployment\scripts
-.\pull-base-images.ps1   # 拉不到基础镜像时先跑这条，走镜像站
-.\start.ps1              # 引擎没起会自动拉起 Docker Desktop，首次要构建镜像
-.\start.ps1 -Vector      # 需要 bge 检索时带上 chroma
-.\start.ps1 -Down        # 停止
-```
+`start.ps1` 在引擎未就绪时会启动 Docker Desktop 并最多等五分钟，首次初始化 WSL 会慢一些。`auth.docker.io` 在部分网络下连不上、构建停在拉基础镜像时，先跑 `.\pull-base-images.ps1`，它从镜像站取回四个基础镜像再打回原始标签，构建就只走本地。
 
-`start.ps1` 先按 PATH 找 `docker`，找不到就去 `-InstallDir` 指定的安装目录取 `resources\bin\docker.exe`。引擎没就绪时它会启动 Docker Desktop 并最多等五分钟，首次启动要初始化 WSL 会慢一些。
+第一次运行会把 `.env.example` 复制成 `.env` 并中断，填好 `JWT_SECRET` 再跑。
 
-`auth.docker.io` 在部分网络下连不上，构建会停在拉基础镜像那一步。`pull-base-images.ps1` 从镜像站取回四个基础镜像再打回原始标签，构建就只走本地。
+### 数据与备份
 
-第一次运行会把 `.env.example` 复制成 `.env` 并中断，填好 `JWT_SECRET` 再跑。后端在 `http://127.0.0.1:8080`，接口文档在 `/api/docs`。
-
-compose 里 postgres、redis、backend 常开，chroma 在 `vector` profile 下按需拉起。容器只绑 127.0.0.1，日志按 10MB 三份轮转。
+compose 里 postgres、redis、backend 常开，chroma 在 `vector` profile 下按需拉起。日志按 10MB 三份轮转。
 
 数据分两处：
 
