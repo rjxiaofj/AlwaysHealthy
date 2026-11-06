@@ -77,6 +77,10 @@ async function load(preferId?: string) {
     shiftStart.value = selected.value?.start_date || ''
     shiftReason.value = ''
     await loadSummary()
+  } catch (error) {
+    // 只留 finally 没有 catch 时，首屏读失败会变成没人处理的 rejection，
+    // 页面停在一片空状态，用户以为计划丢了
+    toast.error(error instanceof Error ? error.message : '读取计划失败')
   } finally {
     loading.value = false
   }

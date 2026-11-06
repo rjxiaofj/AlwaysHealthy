@@ -693,6 +693,7 @@ CI 上一向是绿的、只要 25 秒，因为 `.env` 不入库、密钥为空�
 - **导出 PDF**：`printPdf` 三处缺陷——`document.write` 同步完成后再监听 `load` 收不到事件（print 永不执行）；`window.open` 放在 `await fetch` 之后被弹窗拦截器挡下；`download` 的 `revokeObjectURL` 同步释放且没 append a 标签（Firefox 下载失败）。
 - **下载工具**：两处重复下载逻辑抽成 `utils/download.ts::downloadBlob`，测试 4 条，变异两处咬住。别用 `vi.stubGlobal('URL')`，happy-dom 点 a 标签要 `new URL()`，会炸 TypeError 还假绿。
 - **确认卡片**：`ChatView.spec.ts` 补 4 条（弹卡片、approve、reject、modify 反馈门槛）。`.glass-strong` 同时是外层 section 的类名，判断卡片消失要用文案断言。
+- **首屏读失败**：`ProfileView.load()` 裸 `Promise.all`、`PlansView.load()` 只有 `try/finally`，任一路挂掉都变成没人处理的 rejection + 一片空状态。两处补 `catch` 弹后端 `message`；附加信息（急救事件、打卡总结）继续静默降级。新增 `ProfileView.spec.ts` 4 条、`PlansView.spec.ts` 5 条，计划页用真实 memory router 注入而不是 mock `vue-router`（模板里 `$router.push` 要用）。变异把两处 `toast.error` 换成 `void error`，恰好 4 条失败用例挂。前端 167 → 176 项。
 
 ## 已知取舍
 
@@ -715,7 +716,7 @@ CI 上一向是绿的、只要 25 秒，因为 `.env` 不入库、密钥为空�
 7. `~/.docker/daemon.json` 里加的 `registry-mirrors` 已被 Docker Desktop 覆盖回默认，现在文件里只剩 `builder` 与 `experimental`，`docker info` 没有 Mirrors 项。镜像是本地构建，拉取不受影响，换机部署前要在 Docker Desktop 设置里重新加。
 8. 资料解析的规则按常见检验单写法覆盖，手头没有真实报告样本。真实排版的字段名变体、跨页表格、竖排文字都还没验过，拿到样本后要补规则与用例。
 9. 容器实库上跑 `alembic check` 会报 LangGraph checkpointer 的四张表（`checkpoints`、`checkpoint_writes`、`checkpoint_blobs`、`checkpoint_migrations`）是「待删除」，因为这几张表由 checkpointer 自己建、不在模型里。这是噪音，不是漏迁移。空库上跑 check 才是可比对的信号。
-10. 前端测试覆盖 `api/client.ts`、`api/stream.ts`、`stores/reminders.ts`、`views/planLogic.ts`、`views/profileLogic.ts`、`utils/*`（datetime、today、keyboard、redirect、sse、abort、nav、download）、`components/chartGeometry.ts`，外加 `TrendChart`（RT-01~06）、`ChatView`（CV-01~10，含确认卡片三条分支）、`MultiTrendChart`（6 条）三组渲染用例。计划页、档案页、评估页仍没有渲染测试，也没配覆盖率阈值：它们的判定与请求体拼装已抽成纯函数覆盖，剩下的是模板与事件接线。接口形状由 `tests/contract/test_frontend_types.py` 承担。
+10. 前端测试覆盖 `api/client.ts`、`api/stream.ts`、`stores/reminders.ts`、`views/planLogic.ts`、`views/profileLogic.ts`、`utils/*`（datetime、today、keyboard、redirect、sse、abort、nav、download）、`components/chartGeometry.ts`，外加 `TrendChart`（RT-01~06）、`ChatView`（CV-01~10，含确认卡片三条分支）、`MultiTrendChart`（6 条）、`ProfileView`（4 条）、`PlansView`（5 条）五组渲染用例。评估页仍没有渲染测试，也没配覆盖率阈值：判定与请求体拼装已抽成纯函数覆盖，剩下的是模板与事件接线。接口形状由 `tests/contract/test_frontend_types.py` 承担。
 11. 业务日期固定在东八区（`BUSINESS_TZ`），非东八区用户看到的「今天」会是东八区的今天。急救电话默认 120、文案中文，这个假设与产品定位一致；真要支持其他时区得把偏移做成配置项。
 12. 会话过期是「事后发现」：刷新由请求驱动，用户空闲着令牌过期不会主动续，要等下一次请求拿到 401 才跳转。`LoginView` 的回跳只接受站内绝对路径，底层仍靠 `router.push()` 的兜底重定向，不是唯一防线。
 13. 前后端字段一致性比字段名、可空性与类型宽度（`NC`/`TC`），但不比类型**细节**：`string` 与字面量联合、`number[]` 与元素类型都算一类，元素层不再往下钻。请求体（`ProfilePatchBody`）方向相反，验「前端可能发的类型后端接得住」。嵌套结构（`ReportDetail.content`、`Recommendation`）与 `NO_MODEL` 里那些 service 拼的 dict 依旧没模型可对，只靠运行时取键。泛型接口（`ApiEnvelope<T>`、`PageData<T>`）解析时跳过。

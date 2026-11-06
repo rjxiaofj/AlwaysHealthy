@@ -54,19 +54,25 @@ const conditions = [
 ]
 
 async function load() {
-  const [data, reportList, fileList, consentList, emergencyList] = await Promise.all([
-    profileApi.get(),
-    reportApi.list(),
-    profileApi.files(),
-    consentApi.list(),
-    profileApi.emergencyEvents().catch(() => []),
-  ])
-  profile.value = data
-  reports.value = reportList
-  files.value = fileList
-  consents.value = consentList
-  emergencies.value = emergencyList
-  form.value = formFromProfile(data)
+  try {
+    const [data, reportList, fileList, consentList, emergencyList] = await Promise.all([
+      profileApi.get(),
+      reportApi.list(),
+      profileApi.files(),
+      consentApi.list(),
+      // 急救事件是附加信息，读不到不该把整个档案页拖成空白
+      profileApi.emergencyEvents().catch(() => []),
+    ])
+    profile.value = data
+    reports.value = reportList
+    files.value = fileList
+    consents.value = consentList
+    emergencies.value = emergencyList
+    form.value = formFromProfile(data)
+  } catch (error) {
+    // 不接住的话首屏只剩几个空状态，看着像「我什么都没填」，其实是没读出来
+    toast.error(error instanceof Error ? error.message : '读取档案失败')
+  }
 }
 
 async function save() {
