@@ -44,6 +44,8 @@
 
 提醒按访问时生成，没有后台调度。`plan_tasks.reminder_enabled` 只挡当天任务待完成这一条，计划级的逾期与结束提醒不受它影响。新建任务默认开启，复制版本沿用原值。
 
+这里的「没有后台调度」只指不引入 APScheduler 之类的定时任务，与 `docs/rules/admin-console.md` 要求的后台管理系统无关。
+
 ## 调整与版本确认
 
 调整是两步：`POST /plans/{id}/adjust` 生成草稿版本，`POST /plans/{id}/approve` 才让它生效。草稿不动 `current_version_id`，也不改计划状态，所以前端不能用计划状态判断「有没有待确认版本」，要从 `versions` 里找 `status=draft`。

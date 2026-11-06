@@ -24,6 +24,7 @@ from uuid import UUID
 import pytest
 from pydantic import BaseModel
 
+from app.schemas.admin import AdminUserOut
 from app.schemas.chat import ConversationOut, FileOut, MessageOut, ReminderOut, ReportOut, RunOut
 from app.schemas.health import (
     AssessmentOut,
@@ -100,6 +101,7 @@ INTERFACES, GENERIC_INTERFACES = _parse_types_file()
 
 MAPPED: dict[str, type[BaseModel]] = {
     "UserInfo": UserOut,
+    "AdminUser": AdminUserOut,
     "TokenPayload": TokenOut,
     "Profile": ProfileOut,
     "ProfilePatchBody": ProfilePatch,
@@ -546,3 +548,34 @@ async def test_security_incident_keys(client, auth, session):
     items = response.json()["data"]
     assert items, "刚触发了 5 次失败，事件列表不该是空的"
     assert _missing(items[0], "SecurityIncident") == []
+
+
+@pytest.mark.asyncio
+async def test_admin_user_keys(client, auth, session):
+    """管理页账号卡片的字段白名单，少了键前端就显示 undefined。"""
+    await _make_admin(session, auth["username"])
+
+    response = await client.get("/api/v1/admin/users", headers=auth)
+    assert response.status_code == 200
+    items = response.json()["data"]["items"]
+    assert items, "刚注册过账号，列表不该是空的"
+    assert _missing(items[0], "AdminUser") == []
+    assert "password_hash" not in items[0]
+
+
+@pytest.mark.asyncio
+async def test_admin_resolve_incident_keys(client, auth, session):
+    """处置响应的形状要和事件列表一致，前端直接拿它替换那一行。"""
+    for _ in range(5):
+        await client.post("/api/v1/auth/login", json={"username": auth["username"], "password": "wrong-password"})
+    await _make_admin(session, auth["username"])
+
+    listed = await client.get("/api/v1/security/incidents", headers=auth)
+    assert listed.status_code == 200
+    incident_id = listed.json()["data"][0]["id"]
+
+    response = await client.post(
+        f"/api/v1/admin/incidents/{incident_id}/resolve", headers=auth, json={}
+    )
+    assert response.status_code == 200
+    assert _missing(response.json()["data"], "SecurityIncident") == []

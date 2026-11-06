@@ -724,6 +724,29 @@ CI 上一向是绿的、只要 25 秒，因为 `.env` 不入库、密钥为空�
 - `types.ts` 新增 `ServiceStatus` / `SecurityIncident` 后契约守卫的 `test_every_interface_is_accounted_for` 会拦，必须登记进 `NO_MODEL` 并补运行时键断言（两个都是端点/service 拼的 dict）。
 - 验证：后端 **315 passed**、前端 **212 passed**，typecheck/build/size 全绿；变异 **8/8 被捕获**。详见 `docs/impact/2026-11-06-login-role-tabs.md`。
 
+## 2026-11-06 规则确立：项目必须有后台管理系统
+
+用户明确「项目需要有后台管理系统，把规则更新一下」。此前规则口径停留在「只读管理页、项目没有后台管理系统」，而 11-06 加的 `/admin` 只有两个只读卡片，账号管理与事件处置仍要靠接口或改库——不能把「当前只做了 X」反过来当成规则上限。
+
+- `AGENTS.md` 第 1 节把后台管理系统写成交付物必需能力；第 2 节补一句「无后台调度」只约束定时任务、与管理后台无关；第 3 节大动脉表加「后台管理接口」；第 4 节把事件处置限制成 `open -> resolved` 单向收敛；第 5 节约定新增管理接口统一 `/api/v1/admin/*` 且必须 `admin_user`。
+- 新增 `docs/rules/admin-console.md` 作为后台规则主文档：五项必需能力、九条不可绕过条件、与「无后台调度」的区分、实现状态与回归范围。明确「实现状态」是进度不是规则上限。
+- `docs/rules/auth-and-isolation.md` 去掉「只读管理页」定性，加「后台管理系统」小节，重申 `admin_user` 是唯一边界、管理响应不得拼健康数据；角色变更列为建管理员的第二个入口，与邀请码注册同等敏感。
+- `docs/rules/plan-and-checkin.md` 的「没有后台调度」补一句消歧，避免后来者拿它砍管理页。
+- 历史影响文档 `docs/impact/2026-11-06-login-role-tabs.md` 不抹掉事实，追加「后续修订」说明规则口径变更；`docs/impact/2026-11-04-initial-build.md` 里「管理员只能看服务状态」是当时的范围描述，保留并指向新规则。
+- 规则先改、代码后补：`/admin` 的账号角色管理与事件处置由 `docs/impact/2026-11-06-admin-console.md` 的四段影响分析驱动，实现后同步 README 与本文。
+
+## 2026-11-06 后台管理系统首批能力落地
+
+按新规则补齐账号角色管理与事件处置，`/admin` 从只读看板变成能干活的后台。详情见 `docs/impact/2026-11-06-admin-console.md`。
+
+- 新增 `repositories/admin.py`、`schemas/admin.py`（`AdminUserOut` 字段白名单 + `RolePatchIn` 的 `Literal`）、`services/admin_service.py`、`endpoints/admin.py`，三个接口统一 `/api/v1/admin/*` 并挂 `admin_user`。账号列表用显式白名单，不 `model_dump(User)`，避免 `password_hash` 被带出去。
+- 角色变更护栏：不存在 404、改自己 409、末位管理员降权 409；三条拒绝都先写 `result=fail` 审计并提交再抛错（异常抛出事务会被丢）。角色相同直接返回当前值不刷审计。`role` 非法值走 422，不靠前端。
+- 事件处置 `open -> resolved` 单向收敛，写 `resolved_at`、幂等；不改描述/级别/发生时间，不删记录、不开放重开。响应字典在 `commit()` 前组装，避免提交后回读 ORM 触发异步会话隐式 IO。
+- **时区坑**：SQLite 存不下时区，刚写的 aware 与读回的 naive 让同一事件在「处置响应」和「列表」里 `resolved_at` 字符串差一个 `+00:00`。`security_repo.as_dict` 统一用 `as_utc(...).isoformat()` 输出带时区的 ISO 串。
+- 前端 `AdminView` 从两张卡片扩成三张，三路 `Promise.allSettled` 各自降级；写操作失败只显示后端 `message`、不误改本地行；当前账号按钮禁用；已处置事件不再给按钮。`vi.mock('@/api')` 要顺带提供 `authApi`，否则 `stores/auth.ts` 的具名导入在 mock 里取不到。
+- 验证：后端 **331 passed**、前端 **220 passed**，typecheck/build/size 全绿（首屏 50.2/58 kB、totalJs 90.4/100 kB）；变异 **5/5 被捕获**（去掉角色判断、去掉自改护栏、事件字典丢键、退回 `Promise.all`、角色不再翻转）。
+- 测试自身两处假绿也修了：测试库全量共用导致 `count_admins<=1` 不成立，要先给其他账号降权并断言只剩一个 admin；`_audits` 必须按 `resource_id` 过滤，否则别的用例留下的审计行会喂绿。
+
 ## 已知取舍
 
 
@@ -733,7 +756,7 @@ CI 上一向是绿的、只要 25 秒，因为 `.env` 不入库、密钥为空�
 4. 无后台调度。提醒在访问时按需生成，这是 FDE 明确的选择。任务级开关只挡当天任务提醒，计划级提醒始终生成。
 5. 周期报告只在周期结束后由用户手动生成，不随打卡自动触发。报告落 `tracking_summaries` 与 `health_reports`，同一计划同一周期只一份。
 6. 前端封装层的清理只删了真正没人调的三个方法。后端 `GET /assessments/{id}/evidence`、`GET /conversations/{id}`、`GET /runs/{run_id}`、`GET /tracking/metrics` 仍保留：前两个的字段与 detail 重复，后两个是调试入口，删掉会牵动 OpenAPI 与文档示例，暂时留着。
-7. 管理员注册用的是**共享邀请码**（`ADMIN_REGISTRATION_CODE`），不是按人分发的一次性令牌：拿到它的人都能建管理员，注册成功后立刻签发登录态、没有待审核状态。演示够用，正式系统应改成一次性邀请或已有管理员审批。`/admin` 也只有两个只读卡片，不提供账号管理与事件处置（把 `status` 改成 resolved 仍要走接口或改库）。`expected_role` 是可选字段以兼容老客户端，副作用是「不传字段」享受不到角色校验，但那种客户端本来也没有管理员选项卡。
+7. 管理员注册用的是**共享邀请码**（`ADMIN_REGISTRATION_CODE`），不是按人分发的一次性令牌：拿到它的人都能建管理员，注册成功后立刻签发登录态、没有待审核状态。演示够用，正式系统应改成一次性邀请或已有管理员审批。`expected_role` 是可选字段以兼容老客户端，副作用是「不传字段」享受不到角色校验，但那种客户端本来也没有管理员选项卡。「`/admin` 只有两个只读卡片、事件处置要走接口或改库」自 2026-11-06 起**不再是取舍而是缺口**：项目规则已确立后台管理系统为必需能力，账号角色管理与事件处置随后补齐，见 `docs/rules/admin-console.md`。
 
 ## 待核验事项
 

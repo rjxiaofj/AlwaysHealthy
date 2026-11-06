@@ -5,7 +5,7 @@
 ## 为什么这样设计
 
 健康数据属于敏感个人信息，越权读一次就是泄露事故。平台没有多租户概念，隔离边界就是 user_id。
-管理员默认不能查看他人健康档案，避免后台权限直接变成数据出口。
+项目必须交付后台管理系统，但管理员管理的是账号与平台安全，不是用户的健康数据：管理员默认不能查看他人健康档案，避免后台权限直接变成数据出口。后台的能力清单与禁止项另见 `docs/rules/admin-console.md`。
 
 ## 不可绕过的条件
 
@@ -37,7 +37,7 @@
 - 采集实现在 `app/services/security_service.py::note_login_failure`，由 `auth_service.login` 的失败分支调用。统计前必须 `flush`，否则本次失败的审计还没进事务，统计永远差一条，阈值一辈子触发不了。
 - `description` 固定前缀 `account=<用户名>`，去重靠这个前缀精确匹配，避免 `demo` 与 `demo2` 互相吃掉对方的事件。禁止把密码、令牌、请求体写进这一栏。
 - 不拿越权 404 做采集点。正常使用里的 404 噪声会淹掉真实信号，越权行为靠接口用例覆盖而不是靠事件表。
-- 读取只开 `GET /security/incidents`，用 `admin_user` 依赖，按数据库里的 `role` 判断，不看令牌里的 role。前端 `/admin` 是 2026-11-06 加的只读管理页，只展示服务状态与安全事件；它不提供任何健康档案、评估、计划的查询入口，`admin_user` 依赖仍是唯一的数据边界。
+- 读取只开 `GET /security/incidents`，用 `admin_user` 依赖，按数据库里的 `role` 判断，不看令牌里的 role。后台管理系统是项目必需交付物，前端入口是 `/admin`；它能管账号与安全事件，但不提供任何健康档案、评估、计划的查询入口，`admin_user` 依赖仍是唯一的数据边界。具体能力清单见 `docs/rules/admin-console.md`。
 
 ## 管理员账号与身份选项卡
 
@@ -46,6 +46,14 @@
 - 「用户登录」是最低身份要求而不是精确匹配：管理员也能从用户通道进前台，侧边栏管理入口按 `/users/me` 的 role 显示。
 - 前端 `/admin` 的路由守卫只用来别让普通用户白跑一趟，**不是权限边界**；真正拦数据的仍是后端 `admin_user`。
 - 管理员注册与角色不符都留审计。审计字段只写短状态词，禁止写邀请码、密码或令牌。
+- 后台的角色变更是建管理员的第二个入口，和邀请码注册同等敏感：只有管理员本人能操作，必须写审计，禁止改自己的角色，禁止把最后一个管理员降成普通用户。
+
+## 后台管理系统
+
+项目必须有后台管理系统，不能只交付一个只读看板。它至少提供账号与角色管理、安全事件处置、服务状态巡检，且每个写操作留审计。完整规则在 `docs/rules/admin-console.md`；这里只重申两条最容易踩的红线：
+
+1. 管理接口一律用 `admin_user` 按库里的 `role` 判断。前端 `/admin` 的 `requiresAdmin` 守卫只减少普通用户白跑一趟，不是权限边界。
+2. 管理接口只能返回账号元数据与安全事件。任何把档案、评估、计划、报告、打卡、上传文件拼进管理响应的改动，都视为越权数据出口，先改文档也不放行。
 
 ## 越权自测清单
 
@@ -65,4 +73,4 @@
 - 通知开关在 `tokens.save()` 时复位，否则退出再登录后第二次过期不会再跳。
 - 登录页的 `redirect` 只接受站内绝对路径（`utils/redirect.ts`）。`//evil.com` 会被浏览器当成协议相对地址跳到外站，数组形态则让 `router.push` 行为不可预期。
 
-对应自动化用例：`tests/api/test_auth.py`、`tests/regression/test_data_scope.py`、`src/api/client.spec.ts`、`src/utils/redirect.spec.ts`。
+对应自动化用例：`tests/api/test_auth.py`、`tests/api/test_auth_role.py`、`tests/api/test_admin_console.py`、`tests/regression/test_data_scope.py`、`src/api/client.spec.ts`、`src/views/AdminView.spec.ts`、`src/utils/redirect.spec.ts`。

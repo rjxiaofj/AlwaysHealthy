@@ -42,6 +42,17 @@ export interface ServiceStatus {
   graph_loaded: boolean
 }
 
+/** GET /api/v1/admin/users 的账号元数据，后端 AdminUserOut 白名单 */
+export interface AdminUser {
+  id: string
+  username: string
+  email: string | null
+  role: string
+  status: string
+  created_at: string
+  last_login_at: string | null
+}
+
 /** GET /api/v1/security/incidents，后端由 security_repo.as_dict 拼出 */
 export interface SecurityIncident {
   id: string

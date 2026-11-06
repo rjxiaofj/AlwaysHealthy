@@ -124,7 +124,7 @@ Windows 下也有现成的一键脚本，额外兜住「找 `docker.exe`、引�
 
 ### 管理员登录与注册
 
-登录页顶部有「用户登录 / 管理员登录」选项卡，可随时切换。管理员登录后进 `/admin`（服务状态 + 登录安全事件），普通用户登录回健康首页。管理入口只在侧边栏对管理员显示，且管理员不查看任何人的健康档案、评估或计划。
+登录页顶部有「用户登录 / 管理员登录」选项卡，可随时切换。管理员登录后进 `/admin`（服务状态 + 账号角色 + 登录安全事件），普通用户登录回健康首页。管理入口只在侧边栏对管理员显示，且管理员不查看任何人的健康档案、评估或计划。
 
 管理员账号从「管理员登录 → 没有管理员账号？管理员注册」创建，注册时要填**管理员邀请码**：
 
@@ -135,6 +135,23 @@ Windows 下也有现成的一键脚本，额外兜住「找 `docker.exe`、引�
 `ADMIN_REGISTRATION_CODE` 留空 = 不开放管理员自助注册，这是安全默认值。已有 `role=admin` 的账号可直接从「管理员登录」进；普通账号从管理员通道登录会被后端拒绝（403「该账号不是管理员」），选项卡不是摆设。本地开发时把同一个变量写进 `backend/.env` 即可。
 
 对应接口：`POST /api/v1/auth/register` 的 `role` / `admin_code`，`POST /api/v1/auth/login` 的 `expected_role`；管理页读 `GET /health/services` 与 `GET /api/v1/security/incidents`，两者仍由后端 `admin_user` 依赖按库里的 role 把关，前端路由守卫只是少跑一趟，不是权限边界。
+
+### 后台管理系统
+
+项目必须交付后台管理系统，前端入口是 `/admin`，完整规则见 `docs/rules/admin-console.md`。它管账号与平台安全，不查健康数据：
+
+| 模块 | 能力 |
+| --- | --- |
+| 服务状态 | 断点存储、检索通道、模型接口、工作流加载状态 |
+| 账号与角色 | 分页列出账号元数据，可把 `user` 与 `admin` 互转；禁止改自己的角色、禁止把最后一个管理员降权 |
+| 安全事件 | 查看登录连续失败事件，把 `open` 处置为 `resolved` |
+| 审计 | 角色变更与事件处置都写一条 `security_audit_logs` |
+
+新增管理接口统一挂 `/api/v1/admin/*` 并依赖 `admin_user`；已有的 `/health/services`（app 根路径）与 `/security/incidents` 是历史路径，保留但同样受 `admin_user` 保护。管理响应只含账号元数据与安全事件，不含健康档案、评估、计划、报告、打卡或上传文件。
+
+具体接口：`GET /api/v1/admin/users`（分页）、`PATCH /api/v1/admin/users/{id}/role`、`POST /api/v1/admin/incidents/{id}/resolve`。角色变更禁止改自己的角色、禁止把最后一个管理员降权；事件处置只允许 `open -> resolved` 且重复点击不报错。两个写操作都留一条审计。
+
+`AGENTS.md` 第 2 节和 `docs/rules/plan-and-checkin.md` 里的「没有后台调度」只说提醒不靠 APScheduler 之类的定时任务，与这套后台管理系统无关。
 
 ### 首次安装 Docker Desktop（Windows）
 

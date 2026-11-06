@@ -7,6 +7,8 @@
 
 基于 LangGraph 的智能健康评估与管理平台，毕业设计交付物，Docker Compose 本地单机运行，只绑 localhost。
 
+交付物包含一套后台管理系统（前端 `/admin`），不是可选的附加页面：管理员要能在不碰数据库的前提下完成账号与角色管理、登录安全事件处置、服务状态巡检。它走独立的管理员身份通道，管理的是账号与安全，不得成为健康数据的导出入口。能力清单、禁止项与验收口径见 `docs/rules/admin-console.md`，与本文同为硬约束。
+
 产品边界写死在代码里，不是文案问题：
 
 - 不做疾病诊断，不输出确诊结论。
@@ -27,6 +29,8 @@
 - 不引入 APScheduler。提醒按用户访问时生成，备份交给宿主机计划任务。
 - 不部署独立 Embedding 服务，BGE-M3 在 Backend 进程内加载且只加载一次。
 - 不接真实可穿戴厂商接口，只保留 `WearableDataAdapter` 接口形状。
+
+「不引入 APScheduler」「无后台调度」只约束定时任务，说的是提醒按用户访问时生成、备份交给宿主机；它和「后台管理系统」是两件事，不要拿这条裁掉管理页或管理能力。
 
 ## 3. 大动脉区域
 
@@ -49,6 +53,7 @@
 | 计划校验 | `app/tools/plan_validator.py` | 未校验的计划不得生效 |
 | 密码与文件 | `app/core/security.py`、`app/services/file_service.py` | 哈希算法降级与文件类型绕过 |
 | 启动配置 | `app/core/config.py` | prod 用默认密钥启动等于谁都能签出合法令牌 |
+| 后台管理接口 | `app/api/deps.py::admin_user`、`app/api/v1/endpoints/admin.py`、`app/api/v1/endpoints/security.py` | 少一次角色判断或多返回一个字段，等于把全站账号开出去 |
 
 ## 4. 数据规则
 
@@ -63,7 +68,7 @@
 - `file_assets.admission_status` 记入库前准入校验结果，只做扩展名、大小与文件头校验，不做病毒扫描，不要写让人误以为杀过毒的值。
 - 体检资料的识别结果只进 `file_assets.parsed_payload`，用户确认后才写 `health_metric_records`。不做 OCR，解析不出来的保持 `unsupported`，不得用模型猜字段。
 - `security_audit_logs` 与 `consent_records` 只追加不覆盖。审计不得记录密码、令牌原文、完整档案。`result` 列只有 16 个字符，只能写短状态词，自由文本写日志。
-- `security_incidents` 只从登录连续失败采集，实现在 `security_service.note_login_failure`。同一账号窗口内只留一条未处置事件，读取只给管理员。
+- `security_incidents` 只从登录连续失败采集，实现在 `security_service.note_login_failure`。同一账号窗口内只留一条未处置事件，读取只给管理员；处置只给管理员且只允许 `open -> resolved` 单向收敛，不改描述、级别与发生时间，不删记录。
 - `knowledge_sources` 由 `knowledge_service.sync_sources` 在启动时从 `knowledge/*.md` 的文件头生成，按 `source_id` 幂等，文件 sha256 变了才更新。要改资料出处就改文件头，不要直接改这张表。
 - Redis 只做缓存与短期协调。禁止把档案、评估、计划版本、打卡记录只写 Redis。
 - 迁移全部走 Alembic，不手改演示库。
@@ -71,6 +76,7 @@
 ## 5. 接口调用约束
 
 - 所有业务接口前缀 `/api/v1`，健康检查在 `/health/*`。
+- 新增管理接口统一挂 `/api/v1/admin/*` 并依赖 `admin_user`；已有的 `/health/services`（根路径）与 `/security/incidents` 是历史路径，保留但同样必须依赖 `admin_user`。管理接口只返回账号元数据与安全事件，不含任何健康业务字段。
 - 响应体统一 `{code, message, data, request_id}`，由 `app/core/exceptions.py` 与 `app/core/response.py` 产出。不要另建一套 `{success, result}`。
 - 错误码只用 `app/core/errors.py` 里已定义的枚举。前端不按 `code` 分支，统一在 `src/api/client.ts` 抛 `ApiError` 并直接展示后端 `message`，新增错误码时 `message` 必须是能直接给用户看的中文。
 - JWT 只放 Authorization 头。禁止放查询参数，SSE 也一样。
@@ -126,6 +132,7 @@
 前端改动要跑 `npm test`、`npm run type-check`、`npm run build` 三条。`src/api/client.ts`、`src/api/stream.ts` 与 `src/stores/` 下的改动必须带 `.spec.ts`：这两处坏的 symptom 是跨页面的，靠手点验不完。流式相关的纯逻辑放 `src/utils/sse.ts`，别塞回组件。
 
 改了前端 `types.ts` 或后端 `app/schemas/` 时，`pytest tests/contract` 必须先过。新增前端接口不做映射也不写原因，`test_every_interface_is_accounted_for` 会挂——那不是噪音，是在要求给每个新接口做一次决定。
+改后台管理接口还要跑 `tests/api/test_admin_console.py`：越权 401/403、字段白名单、角色护栏与事件状态收敛都在那一处守着。
 
 `.github/workflows/ci.yml` 在 push 与 PR 上跑同一组命令。推送后确认 CI 绿了再继续下一个改动，红着连推等于把信号埋掉。
 

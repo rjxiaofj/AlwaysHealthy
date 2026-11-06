@@ -1,6 +1,7 @@
 import { api } from './client'
 import type {
   AccountRole,
+  AdminUser,
   Assessment,
   AssessmentSummary,
   ChatMessage,
@@ -49,6 +50,12 @@ export const adminApi = {
   // /health/* 挂在 app 根路径（compose healthcheck 也用 /health/live），不在版本前缀下
   services: () => api<ServiceStatus>('/health/services', { base: '' }),
   incidents: (limit = 20) => api<SecurityIncident[]>('/security/incidents', { params: { limit } }),
+  users: (page = 1, pageSize = 20) =>
+    api<PageData<AdminUser>>('/admin/users', { params: { page, page_size: pageSize } }),
+  setRole: (id: string, role: AccountRole) =>
+    api<AdminUser>(`/admin/users/${id}/role`, { method: 'PATCH', body: { role } }),
+  resolveIncident: (id: string) =>
+    api<SecurityIncident>(`/admin/incidents/${id}/resolve`, { method: 'POST', body: {} }),
 }
 
 export const profileApi = {

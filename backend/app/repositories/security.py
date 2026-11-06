@@ -1,8 +1,10 @@
 from datetime import datetime
+from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import as_utc
 from app.db.models import SecurityAuditLog, SecurityIncident
 
 LOGIN_ACTION = "login"
@@ -69,13 +71,19 @@ async def incidents_of(session: AsyncSession, limit: int = 20) -> list[SecurityI
     return list(rows)
 
 
+async def incident_of(session: AsyncSession, incident_id: UUID) -> SecurityIncident | None:
+    return await session.get(SecurityIncident, incident_id)
+
+
 def as_dict(row: SecurityIncident) -> dict[str, object]:
+    # sqlite 存不下时区：刚写的行是 aware、从库里读回的是 naive。统一转成带 +00:00 的
+    # ISO 串，否则同一条事件在「处置响应」和「事件列表」里字符串长得不一样
     return {
         "id": str(row.id),
         "incident_type": row.incident_type,
         "severity": row.severity,
         "description": row.description,
         "status": row.status,
-        "occurred_at": row.occurred_at,
-        "resolved_at": row.resolved_at,
+        "occurred_at": as_utc(row.occurred_at).isoformat() if row.occurred_at else None,
+        "resolved_at": as_utc(row.resolved_at).isoformat() if row.resolved_at else None,
     }

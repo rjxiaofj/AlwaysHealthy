@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
+    admin,
     assessments,
     auth,
     consents,
@@ -27,6 +28,7 @@ api_router.include_router(reports.router)
 api_router.include_router(reminders.router)
 api_router.include_router(knowledge.router)
 api_router.include_router(security.router)
+api_router.include_router(admin.router)
 
 health_router = APIRouter()
 health_router.include_router(health.router)
