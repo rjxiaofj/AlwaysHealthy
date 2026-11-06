@@ -712,6 +712,18 @@ CI 上一向是绿的、只要 25 秒，因为 `.env` 不入库、密钥为空�
 
 残留：`cancelled` 仍不删 checkpointer 旧断点；取消状态**不会中止已在跑的图**，那条 `astream` 仍会跑到 `asyncio.timeout` 预算上限并继续写同一 thread 的断点，真正隔离需要按 `thread_id` 串行的执行锁（要跨 150s LLM 调用，本轮没引入）；`cancel_live_runs` 会顶掉同会话所有 `running`，单实例部署成立，多实例跨进程并发不成立。
 
+## 2026-11-06 登录身份选项卡与只读管理页
+
+用户要「登录页选项卡，用户登录 / 管理员登录自由切换」。先确认了两个方向：管理员登录后去哪（选了「新建管理页」）、管理员账号从哪来（用户自定义：管理员选项卡下提示管理员注册）。
+
+- **不能只做 UI**：后端原来不校验期望角色、注册只建 `user`、库里没有管理员初始化入口，光加选项卡等于普通账号点「管理员登录」照样进。做成端到端通道：`LoginIn.expected_role` 按**库里的 role** 校验（普通账号冒充 403 + 审计，密码是对的所以不计入封禁阈值）；`RegisterIn.role/admin_code` 配 `ADMIN_REGISTRATION_CODE`（`secrets.compare_digest` 常量时间比较，留空则不开放）。留邀请码是加固：自助注册管理员不能裸奔，演示值写进两个 `.env.example`，compose 默认仍为空。
+- **选项卡是最低身份要求不是精确匹配**：管理员也能从「用户登录」进前台，侧边栏管理入口按 `/users/me` 的 role 显示；成功去向按**选中的通道**跳（admin → `/admin`，user → 原 redirect），不按账号 role 硬塞。
+- `/health/*` 挂在 app 根路径不在 `/api/v1` 下（compose healthcheck 用 `/health/live`），所以 `api()` 加了可选 `base`，`adminApi.services` 用 `{ base: '' }`。别为图省事把 health router 重复挂进 api_router，会把路径拼成 `/api/v1/health/health/live`。
+- 新 `/admin` 只读服务状态 + 安全事件，不新开任何健康档案查询入口；前端 `requiresAdmin` 守卫只是少跑一趟，`admin_user` 依赖仍是数据边界。规则文档原来那句「项目没有后台管理系统，没有页面入口」已同步改写。
+- 管理页两路读用 `Promise.allSettled` 各自降级，不用 `Promise.all`：一个接口挂了不会把另一路成功数据一起丢，事件读失败要说「读取失败」而不是误报「暂无安全事件」。
+- `types.ts` 新增 `ServiceStatus` / `SecurityIncident` 后契约守卫的 `test_every_interface_is_accounted_for` 会拦，必须登记进 `NO_MODEL` 并补运行时键断言（两个都是端点/service 拼的 dict）。
+- 验证：后端 **315 passed**、前端 **212 passed**，typecheck/build/size 全绿；变异 **8/8 被捕获**。详见 `docs/impact/2026-11-06-login-role-tabs.md`。
+
 ## 已知取舍
 
 
@@ -721,6 +733,7 @@ CI 上一向是绿的、只要 25 秒，因为 `.env` 不入库、密钥为空�
 4. 无后台调度。提醒在访问时按需生成，这是 FDE 明确的选择。任务级开关只挡当天任务提醒，计划级提醒始终生成。
 5. 周期报告只在周期结束后由用户手动生成，不随打卡自动触发。报告落 `tracking_summaries` 与 `health_reports`，同一计划同一周期只一份。
 6. 前端封装层的清理只删了真正没人调的三个方法。后端 `GET /assessments/{id}/evidence`、`GET /conversations/{id}`、`GET /runs/{run_id}`、`GET /tracking/metrics` 仍保留：前两个的字段与 detail 重复，后两个是调试入口，删掉会牵动 OpenAPI 与文档示例，暂时留着。
+7. 管理员注册用的是**共享邀请码**（`ADMIN_REGISTRATION_CODE`），不是按人分发的一次性令牌：拿到它的人都能建管理员，注册成功后立刻签发登录态、没有待审核状态。演示够用，正式系统应改成一次性邀请或已有管理员审批。`/admin` 也只有两个只读卡片，不提供账号管理与事件处置（把 `status` 改成 resolved 仍要走接口或改库）。`expected_role` 是可选字段以兼容老客户端，副作用是「不传字段」享受不到角色校验，但那种客户端本来也没有管理员选项卡。
 
 ## 待核验事项
 

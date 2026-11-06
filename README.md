@@ -122,6 +122,20 @@ Windows 下也有现成的一键脚本，额外兜住「找 `docker.exe`、引�
 
 `LLM_API_KEY` 留空时降级到规则回答、不调外部模型；要接 DeepSeek 就填进 `deployment/.env` 再 `up -d`。`EMBEDDING_BACKEND=bge` 时还要带 `--profile vector`（或 `start.ps1 -Vector`）把 chroma 拉起来。
 
+### 管理员登录与注册
+
+登录页顶部有「用户登录 / 管理员登录」选项卡，可随时切换。管理员登录后进 `/admin`（服务状态 + 登录安全事件），普通用户登录回健康首页。管理入口只在侧边栏对管理员显示，且管理员不查看任何人的健康档案、评估或计划。
+
+管理员账号从「管理员登录 → 没有管理员账号？管理员注册」创建，注册时要填**管理员邀请码**：
+
+1. 在 `deployment/.env` 设置 `ADMIN_REGISTRATION_CODE`（`.env.example` 里有演示值，正式演示前请换成不易猜的值）；
+2. `docker compose -f deployment/docker-compose.yml up -d` 让配置生效（只改 `.env` 不用重新 build）；
+3. 在管理员注册表单里输入同一个值。
+
+`ADMIN_REGISTRATION_CODE` 留空 = 不开放管理员自助注册，这是安全默认值。已有 `role=admin` 的账号可直接从「管理员登录」进；普通账号从管理员通道登录会被后端拒绝（403「该账号不是管理员」），选项卡不是摆设。本地开发时把同一个变量写进 `backend/.env` 即可。
+
+对应接口：`POST /api/v1/auth/register` 的 `role` / `admin_code`，`POST /api/v1/auth/login` 的 `expected_role`；管理页读 `GET /health/services` 与 `GET /api/v1/security/incidents`，两者仍由后端 `admin_user` 依赖按库里的 role 把关，前端路由守卫只是少跑一趟，不是权限边界。
+
 ### 首次安装 Docker Desktop（Windows）
 
 安装包放在 `E:\Docker\installer`，程序目录与镜像数据都放 E 盘：

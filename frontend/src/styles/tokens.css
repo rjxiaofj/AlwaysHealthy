@@ -195,6 +195,33 @@ body::before {
   color: var(--color-text-secondary);
 }
 
+/* 登录页身份选项卡。选中态沿用导航的高亮配色，浅色/深色主题都自动跟着变量走 */
+.segment {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-control);
+  background: var(--color-bg-secondary);
+}
+
+.segment-item {
+  flex: 1;
+  border: 0;
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  background: transparent;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.segment-item.is-active {
+  background: var(--color-primary);
+  color: var(--color-bg);
+  font-weight: 500;
+}
+
 .level-low {
   color: var(--color-success);
   background: rgba(39, 155, 98, 0.12);

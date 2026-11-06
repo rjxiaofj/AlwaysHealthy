@@ -142,6 +142,8 @@ NO_MODEL: dict[str, str] = {
     "ExtractedDocument": "file_service 拼 dict，需要上传 PDF，见 tests/api/test_document_extract.py",
     "ExtractedField": "同上",
     "ConfirmationPayload": "SSE 事件里的确认卡片，不经过模型序列化",
+    "ServiceStatus": "GET /health/services 在端点里直接拼 dict，运行时见 test_admin_service_status_keys",
+    "SecurityIncident": "security_repo.as_dict 拼 dict，运行时见 test_security_incident_keys",
 }
 
 
@@ -509,3 +511,38 @@ async def test_assessment_summary_keys(client, auth):
 
     assert page["items"], "刚走完一次评估，历史列表不该是空的"
     assert _missing(page["items"][0], "AssessmentSummary") == []
+
+
+async def _make_admin(session, username: str) -> None:
+    from sqlalchemy import select, update
+
+    from app.db.models import User
+
+    user_id = await session.scalar(select(User.id).where(User.username == username))
+    await session.execute(update(User).where(User.id == user_id).values(role="admin"))
+    await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_admin_service_status_keys(client, auth, session):
+    """管理页第一张卡片的字段，端点拼 dict 少了键前端就会显示 undefined。"""
+    await _make_admin(session, auth["username"])
+
+    # /health/* 挂在 app 根路径，不在 /api/v1 下（compose healthcheck 也用 /health/live）
+    response = await client.get("/health/services", headers=auth)
+    assert response.status_code == 200
+    assert _missing(response.json()["data"], "ServiceStatus") == []
+
+
+@pytest.mark.asyncio
+async def test_security_incident_keys(client, auth, session):
+    """管理页事件列表的字段，security_repo.as_dict 改名会让模板读不到值。"""
+    for _ in range(5):
+        await client.post("/api/v1/auth/login", json={"username": auth["username"], "password": "wrong-password"})
+    await _make_admin(session, auth["username"])
+
+    response = await client.get("/api/v1/security/incidents", headers=auth)
+    assert response.status_code == 200
+    items = response.json()["data"]
+    assert items, "刚触发了 5 次失败，事件列表不该是空的"
+    assert _missing(items[0], "SecurityIncident") == []

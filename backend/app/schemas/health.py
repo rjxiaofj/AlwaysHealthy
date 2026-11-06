@@ -9,11 +9,16 @@ class RegisterIn(BaseModel):
     username: str = Field(min_length=3, max_length=32, pattern=r"^[A-Za-z0-9_]+$")
     password: str = Field(min_length=8, max_length=64)
     email: str | None = None
+    # 管理员只能凭 ADMIN_REGISTRATION_CODE 自助开通，默认是普通用户
+    role: Literal["user", "admin"] = "user"
+    admin_code: str | None = None
 
 
 class LoginIn(BaseModel):
     username: str
     password: str
+    # 登录页选的选项卡。只用来挡「拿普通账号冒充管理员」，不参与令牌签发
+    expected_role: Literal["user", "admin"] | None = None
 
 
 class RefreshIn(BaseModel):

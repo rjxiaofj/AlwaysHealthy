@@ -1,7 +1,7 @@
 <script setup lang="ts">
 withDefaults(
   defineProps<{
-    name: 'home' | 'chat' | 'chart' | 'calendar' | 'pulse' | 'user' | 'sun' | 'moon' | 'menu' | 'logout' | 'plus' | 'close'
+    name: 'home' | 'chat' | 'chart' | 'calendar' | 'pulse' | 'user' | 'sun' | 'moon' | 'menu' | 'logout' | 'plus' | 'close' | 'shield'
     size?: number
   }>(),
   { size: 18 },
@@ -20,6 +20,7 @@ const paths: Record<string, string> = {
   logout: 'M14 5h5v14h-5M10 12H3m0 0 3-3m-3 3 3 3',
   plus: 'M12 5v14M5 12h14',
   close: 'M6 6l12 12M18 6 6 18',
+  shield: 'M12 3l7 3v6c0 4.2-2.8 7.5-7 9-4.2-1.5-7-4.8-7-9V6zM9 12l2 2 4-4',
 }
 </script>
 

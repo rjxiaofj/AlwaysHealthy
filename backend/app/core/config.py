@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     access_token_minutes: int = 30
     refresh_token_days: int = 14
 
+    # 留空则不开放管理员自助注册。演示时给一个值并写进 deployment/.env，
+    # 生产部署务必换成不易猜的值：拿到它就能建出 admin 账号
+    admin_registration_code: str = ""
+
     llm_base_url: str = "https://api.deepseek.com/v1"
     llm_api_key: str = ""
     llm_model: str = "deepseek-chat"

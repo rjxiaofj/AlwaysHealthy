@@ -31,6 +31,28 @@ export interface TokenPayload {
   role: string
 }
 
+/** 登录页的身份选项卡，同时作为后端的 expected_role / 注册 role */
+export type AccountRole = 'user' | 'admin'
+
+/** GET /health/services（挂在根路径，不在 /api/v1 下） */
+export interface ServiceStatus {
+  checkpointer: string
+  embedding_backend: string
+  llm_configured: boolean
+  graph_loaded: boolean
+}
+
+/** GET /api/v1/security/incidents，后端由 security_repo.as_dict 拼出 */
+export interface SecurityIncident {
+  id: string
+  incident_type: string
+  severity: string | null
+  description: string | null
+  status: string
+  occurred_at: string | null
+  resolved_at: string | null
+}
+
 export interface MedicalHistory {
   id: string
   history_type: string

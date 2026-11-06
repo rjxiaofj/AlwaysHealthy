@@ -102,10 +102,12 @@ interface RequestOptions {
   params?: Query
   formData?: FormData
   retry?: boolean
+  /** 覆盖默认的 /api/v1 前缀。/health/* 挂在根路径，不走版本前缀 */
+  base?: string
 }
 
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const url = new URL(`${BASE}${path}`, window.location.origin)
+  const url = new URL(`${options.base ?? BASE}${path}`, window.location.origin)
   if (options.params) {
     Object.entries(options.params).forEach(([key, value]) => {
       if (value !== null && value !== undefined && value !== '') url.searchParams.set(key, String(value))

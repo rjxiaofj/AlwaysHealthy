@@ -1,9 +1,11 @@
+import secrets
 from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import BadCredentials, Unauthorized, UserExists
+from app.core.config import get_settings
+from app.core.exceptions import BadCredentials, Forbidden, Unauthorized, UserExists
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -37,13 +39,32 @@ async def _issue(session: AsyncSession, user: User) -> TokenOut:
 async def register(session: AsyncSession, payload: RegisterIn) -> TokenOut:
     if await repo.get_user_by_username(session, payload.username):
         raise UserExists("用户名已被占用")
+    if payload.role == "admin":
+        expected = get_settings().admin_registration_code
+        if not expected:
+            raise Forbidden("管理员注册未开放，请联系系统维护者")
+        # 常量时间比较，别让邀请码按字符逐位试出来
+        if not payload.admin_code or not secrets.compare_digest(payload.admin_code, expected):
+            raise Forbidden("管理员邀请码不正确")
     user = User(
         username=payload.username,
         email=payload.email,
         password_hash=hash_password(payload.password),
+        role=payload.role,
     )
     session.add(user)
     await session.flush()
+    if payload.role == "admin":
+        # 谁能建管理员必须可追溯，这条随 _issue 的 commit 一起落库
+        chat_repo.audit(
+            session,
+            actor_user_id=user.id,
+            action="register_admin",
+            resource_type="user",
+            resource_id=str(user.id),
+            result="success",
+            request_id=None,
+        )
     return await _issue(session, user)
 
 
@@ -67,6 +88,22 @@ async def login(session: AsyncSession, payload: LoginIn, request_id: str | None 
         raise BadCredentials("用户名或密码不正确")
     if user.status != "active":
         raise Unauthorized("账号已停用")
+    if payload.expected_role == "admin" and user.role != "admin":
+        # 选项卡不是装饰：普通账号从「管理员登录」进来必须被挡住，否则前端
+        # 只是换了个按钮文案，用户却会以为自己进了管理通道。
+        # 密码是对的，不算登录失败，不触发 note_login_failure 的封禁计数，只留审计。
+        chat_repo.audit(
+            session,
+            actor_user_id=user.id,
+            action="login",
+            resource_type="user",
+            resource_id=str(user.id),
+            result="fail",
+            request_id=request_id,
+        )
+        # 失败分支要单独提交，异常抛出后事务会被丢弃
+        await session.commit()
+        raise Forbidden("该账号不是管理员，请切换为「用户登录」")
     chat_repo.audit(
         session,
         actor_user_id=user.id,

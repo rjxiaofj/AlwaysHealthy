@@ -1,5 +1,6 @@
 import { api } from './client'
 import type {
+  AccountRole,
   Assessment,
   AssessmentSummary,
   ChatMessage,
@@ -18,6 +19,8 @@ import type {
   Reminder,
   ReportDetail,
   ReportSummary,
+  SecurityIncident,
+  ServiceStatus,
   TokenPayload,
   TrackingSummary,
   Trend,
@@ -25,11 +28,27 @@ import type {
 } from './types'
 
 export const authApi = {
-  register: (username: string, password: string) =>
-    api<TokenPayload>('/auth/register', { body: { username, password } }),
-  login: (username: string, password: string) => api<TokenPayload>('/auth/login', { body: { username, password } }),
+  register: (username: string, password: string, role: AccountRole = 'user', adminCode?: string) =>
+    api<TokenPayload>('/auth/register', {
+      body: {
+        username,
+        password,
+        role,
+        ...(adminCode !== undefined ? { admin_code: adminCode } : {}),
+      },
+    }),
+  login: (username: string, password: string, expectedRole?: AccountRole) =>
+    api<TokenPayload>('/auth/login', {
+      body: { username, password, ...(expectedRole ? { expected_role: expectedRole } : {}) },
+    }),
   logout: (refreshToken: string) => api<null>('/auth/logout', { body: { refresh_token: refreshToken } }),
   me: () => api<UserInfo>('/users/me'),
+}
+
+export const adminApi = {
+  // /health/* 挂在 app 根路径（compose healthcheck 也用 /health/live），不在版本前缀下
+  services: () => api<ServiceStatus>('/health/services', { base: '' }),
+  incidents: (limit = 20) => api<SecurityIncident[]>('/security/incidents', { params: { limit } }),
 }
 
 export const profileApi = {

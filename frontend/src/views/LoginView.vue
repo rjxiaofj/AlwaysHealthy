@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { ApiError } from '@/api/client'
+import type { AccountRole } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
 import { safeRedirect } from '@/utils/redirect'
 
@@ -10,10 +11,57 @@ const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 
-const mode = ref<'login' | 'register'>('login')
+type Mode = 'login' | 'register'
+
+const tabs: { value: AccountRole; label: string }[] = [
+  { value: 'user', label: '用户登录' },
+  { value: 'admin', label: '管理员登录' },
+]
+
+const tab = ref<AccountRole>('user')
+const mode = ref<Mode>('login')
 const username = ref('')
 const password = ref('')
+const adminCode = ref('')
 const error = ref('')
+
+const isAdminTab = computed(() => tab.value === 'admin')
+const heading = computed(() => {
+  if (mode.value === 'register') return isAdminTab.value ? '注册管理员账号' : '注册新账号'
+  return isAdminTab.value ? '管理员登录' : '登录'
+})
+const subheading = computed(() => {
+  if (mode.value === 'register') {
+    return isAdminTab.value ? '需要管理员邀请码，注册后进入管理后台' : '新账号会自动创建一份健康档案'
+  }
+  return isAdminTab.value ? '管理部门账号，查看服务状态与安全事件' : '使用账号继续你的健康档案'
+})
+const submitLabel = computed(() => {
+  if (auth.pending) return '处理中'
+  if (mode.value === 'register') return isAdminTab.value ? '注册管理员并进入后台' : '注册并进入'
+  return isAdminTab.value ? '进入管理后台' : '登录'
+})
+const switchLabel = computed(() => {
+  if (mode.value === 'register') return '已有账号，去登录'
+  return isAdminTab.value ? '没有管理员账号？管理员注册' : '没有账号，去注册'
+})
+
+function switchTab(next: AccountRole) {
+  if (tab.value === next) return
+  tab.value = next
+  // 换身份就回到登录态，别把上一个身份的注册表单和错误提示带过去；
+  // 用户名保留，方便同名账号在两个通道之间试
+  mode.value = 'login'
+  error.value = ''
+  password.value = ''
+  adminCode.value = ''
+}
+
+function toggleMode() {
+  mode.value = mode.value === 'login' ? 'register' : 'login'
+  error.value = ''
+  adminCode.value = ''
+}
 
 async function submit() {
   error.value = ''
@@ -21,10 +69,24 @@ async function submit() {
     error.value = '用户名至少 3 位，密码至少 8 位'
     return
   }
+  if (mode.value === 'register' && isAdminTab.value && !adminCode.value.trim()) {
+    error.value = '请填写管理员邀请码'
+    return
+  }
   try {
-    if (mode.value === 'login') await auth.login(username.value, password.value)
-    else await auth.register(username.value, password.value)
-    router.push(safeRedirect(route.query.redirect))
+    if (mode.value === 'login') {
+      await auth.login(username.value, password.value, tab.value)
+    } else {
+      await auth.register(
+        username.value,
+        password.value,
+        tab.value,
+        isAdminTab.value ? adminCode.value.trim() : undefined,
+      )
+    }
+    // 按选中的通道决定去向：管理员从「用户登录」进来仍是看前台，
+    // 侧边栏的管理入口由 /users/me 的 role 决定，两件事分开
+    router.push(tab.value === 'admin' ? '/admin' : safeRedirect(route.query.redirect))
   } catch (exc) {
     error.value = exc instanceof ApiError ? exc.message : '网络异常，请稍后重试'
   }
@@ -54,10 +116,23 @@ async function submit() {
       </section>
 
       <section class="glass-strong p-6 lg:p-8">
-        <h2 class="text-[18px] font-semibold">{{ mode === 'login' ? '登录' : '注册' }}</h2>
-        <p class="mt-1 text-[12px]" :style="{ color: 'var(--color-text-secondary)' }">
-          {{ mode === 'login' ? '使用账号继续你的健康档案' : '新账号会自动创建一份健康档案' }}
-        </p>
+        <div class="segment" role="tablist" aria-label="登录身份">
+          <button
+            v-for="item in tabs"
+            :key="item.value"
+            class="segment-item"
+            :class="{ 'is-active': tab === item.value }"
+            type="button"
+            role="tab"
+            :aria-selected="tab === item.value"
+            @click="switchTab(item.value)"
+          >
+            {{ item.label }}
+          </button>
+        </div>
+
+        <h2 class="mt-6 text-[18px] font-semibold">{{ heading }}</h2>
+        <p class="mt-1 text-[12px]" :style="{ color: 'var(--color-text-secondary)' }">{{ subheading }}</p>
 
         <form class="mt-6 flex flex-col gap-4" @submit.prevent="submit">
           <div>
@@ -71,19 +146,41 @@ async function submit() {
               v-model="password"
               class="field"
               type="password"
-              autocomplete="current-password"
+              :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
               placeholder="至少 8 位"
             />
           </div>
+          <div v-if="mode === 'register' && isAdminTab">
+            <label class="label" for="admin-code">管理员邀请码</label>
+            <input
+              id="admin-code"
+              v-model="adminCode"
+              class="field"
+              type="password"
+              autocomplete="off"
+              placeholder="由部署方配置"
+            />
+            <p class="mt-1.5 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+              邀请码来自部署环境的 ADMIN_REGISTRATION_CODE，未配置时不开放管理员注册。
+            </p>
+          </div>
           <p v-if="error" class="text-[12px]" :style="{ color: 'var(--color-danger)' }">{{ error }}</p>
           <button class="btn btn-primary w-full" type="submit" :disabled="auth.pending">
-            {{ auth.pending ? '处理中' : mode === 'login' ? '登录' : '注册并进入' }}
+            {{ submitLabel }}
           </button>
         </form>
 
-        <button class="mt-4 w-full text-center text-[12px]" :style="{ color: 'var(--color-text-secondary)' }" @click="mode = mode === 'login' ? 'register' : 'login'">
-          {{ mode === 'login' ? '没有账号，去注册' : '已有账号，去登录' }}
+        <button
+          class="mt-4 w-full text-center text-[12px]"
+          :style="{ color: 'var(--color-text-secondary)' }"
+          type="button"
+          @click="toggleMode"
+        >
+          {{ switchLabel }}
         </button>
+        <p v-if="isAdminTab" class="mt-2 text-center text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
+          管理入口只看服务状态与安全事件，不查看任何人的健康档案。
+        </p>
       </section>
     </div>
   </div>

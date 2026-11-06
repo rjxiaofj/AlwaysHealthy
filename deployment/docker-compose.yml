@@ -59,6 +59,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://alwayshealthy:${POSTGRES_PASSWORD:-alwayshealthy}@postgres:5432/alwayshealthy
       CHECKPOINTER: postgres
       JWT_SECRET: ${JWT_SECRET:?先复制 .env.example 为 .env 并设置 JWT_SECRET}
+      ADMIN_REGISTRATION_CODE: ${ADMIN_REGISTRATION_CODE:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com/v1}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-deepseek-chat}

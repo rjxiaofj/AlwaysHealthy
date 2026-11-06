@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import AppIcon from '@/components/AppIcon.vue'
@@ -15,7 +15,7 @@ const route = useRoute()
 const router = useRouter()
 const drawer = ref(false)
 
-const nav = [
+const baseNav = [
   { to: '/', label: '健康首页', icon: 'home' as const },
   { to: '/chat', label: '智能助手', icon: 'chat' as const },
   { to: '/assessment', label: '健康评估', icon: 'pulse' as const },
@@ -23,6 +23,13 @@ const nav = [
   { to: '/trends', label: '指标趋势', icon: 'chart' as const },
   { to: '/profile', label: '个人中心', icon: 'user' as const },
 ]
+
+// 管理入口只对库里 role=admin 的账号出现。ensureUser 是挂载后才回来的，
+// 所以这里必须是 computed，不能是常量数组
+const nav = computed(() => [
+  ...baseNav,
+  ...(auth.isAdmin ? [{ to: '/admin', label: '管理后台', icon: 'shield' as const }] : []),
+])
 
 async function logout() {
   await auth.logout()
