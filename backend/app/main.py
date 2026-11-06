@@ -12,6 +12,7 @@ from app.api.v1.router import api_router, health_router
 from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.core.logging import get_logger, setup_logging
+from app.core import runtime_config
 from app.db.checkpointer import close_checkpointer, get_checkpointer
 from app.db.session import SessionLocal, init_models
 from app.graph.deps import GraphDeps
@@ -29,6 +30,9 @@ async def lifespan(app: FastAPI):
     setup_logging()
     if settings.env == "dev":
         await init_models()
+
+    # 后台在线改过的模型参数在这里覆盖进内存，重启后仍生效
+    runtime_config.load_overrides()
 
     retriever = get_retriever()
     llm = get_llm()

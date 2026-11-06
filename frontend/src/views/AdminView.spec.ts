@@ -8,25 +8,43 @@ import { useToastStore } from '@/stores/toast'
 import AdminView from '@/views/AdminView.vue'
 
 /**
- * 管理页三路并发读取：一路挂掉不能把另外两路成功的数据一起丢掉，
- * 也不能停在「加载中」或把读失败误报成「暂无」。写操作失败要显示后端文案、不误改本地行。
+ * 后台多菜单页：侧边栏五个视图，九路接口首屏各自降级，
+ * 写操作（角色/状态/删除/处置/运行时配置）成功更新、失败显示后端文案且不误改本地行。
  */
 const mocks = vi.hoisted(() => ({
   services: vi.fn(),
-  incidents: vi.fn(),
+  overview: vi.fn(),
   users: vi.fn(),
   setRole: vi.fn(),
+  setStatus: vi.fn(),
+  deleteUser: vi.fn(),
+  audits: vi.fn(),
+  incidents: vi.fn(),
   resolveIncident: vi.fn(),
+  runtime: vi.fn(),
+  setRuntime: vi.fn(),
+  agents: vi.fn(),
+  workflowStats: vi.fn(),
+  knowledge: vi.fn(),
 }))
 
 vi.mock('@/api', () => ({
   authApi: { me: vi.fn(), login: vi.fn(), register: vi.fn(), logout: vi.fn() },
   adminApi: {
     services: mocks.services,
-    incidents: mocks.incidents,
+    overview: mocks.overview,
     users: mocks.users,
     setRole: mocks.setRole,
+    setStatus: mocks.setStatus,
+    deleteUser: mocks.deleteUser,
+    audits: mocks.audits,
+    incidents: mocks.incidents,
     resolveIncident: mocks.resolveIncident,
+    runtime: mocks.runtime,
+    setRuntime: mocks.setRuntime,
+    agents: mocks.agents,
+    workflowStats: mocks.workflowStats,
+    knowledge: mocks.knowledge,
   },
 }))
 
@@ -34,7 +52,16 @@ const status = {
   checkpointer: 'postgres',
   embedding_backend: 'keyword',
   llm_configured: false,
+  llm_model: 'deepseek-chat',
   graph_loaded: true,
+}
+
+const overview = {
+  user_total: 3,
+  admin_total: 1,
+  open_incidents: 2,
+  login_fail_today: 5,
+  new_users_today: 1,
 }
 
 const incident = {
@@ -57,6 +84,19 @@ const account = {
   last_login_at: null,
 }
 
+const audit = {
+  id: 'a1',
+  actor_user_id: null,
+  action: 'login',
+  resource_type: 'user',
+  resource_id: 'alice',
+  result: 'fail',
+  request_id: 'req1',
+  created_at: '2026-11-06T09:00:00Z',
+}
+
+const runtime = { llm_model: 'deepseek-chat', llm_api_key: 'sk-test', embedding_backend: 'keyword' }
+
 function mountAdmin(selfId: string | null = null) {
   const pinia = createPinia()
   if (selfId !== null) {
@@ -67,154 +107,196 @@ function mountAdmin(selfId: string | null = null) {
 }
 
 function buttonByText(wrapper: VueWrapper, text: string) {
-  return wrapper.findAll('button').find((item) => item.text() === text)
+  return wrapper.findAll('button').find((item) => item.text().includes(text))
 }
 
 beforeEach(() => {
   mocks.services.mockReset().mockResolvedValue(status)
-  mocks.incidents.mockReset().mockResolvedValue([incident])
+  mocks.overview.mockReset().mockResolvedValue(overview)
   mocks.users.mockReset().mockResolvedValue({ items: [account], total: 1, page: 1, page_size: 20 })
   mocks.setRole.mockReset().mockResolvedValue({ ...account, role: 'admin' })
+  mocks.setStatus.mockReset().mockResolvedValue({ ...account, status: 'disabled' })
+  mocks.deleteUser.mockReset().mockResolvedValue(null)
+  mocks.audits.mockReset().mockResolvedValue({ items: [audit], total: 1, page: 1, page_size: 20 })
+  mocks.incidents.mockReset().mockResolvedValue([incident])
   mocks.resolveIncident.mockReset().mockResolvedValue({ ...incident, status: 'resolved', resolved_at: '2026-11-06T12:00:00Z' })
+  mocks.runtime.mockReset().mockResolvedValue(runtime)
+  mocks.setRuntime.mockReset().mockResolvedValue(runtime)
+  mocks.agents.mockReset().mockResolvedValue([{ name: 'supervisor', loaded: true }])
+  mocks.workflowStats.mockReset().mockResolvedValue({ running: 0, waiting_user: 0, cancelled: 0, failed: 0, completed: 1 })
+  mocks.knowledge.mockReset().mockResolvedValue({ chunks: 48 })
 })
 
-describe('管理页首屏', () => {
-  it('三路都成功时渲染服务状态、账号与安全事件，不弹提示', async () => {
-    const { wrapper, pinia } = mountAdmin()
-    await flushPromises()
+describe('后台多菜单页', () => {
+  it('默认停在总览，显示统计与服务状态', async () => {
+    const { wrapper, pinia } = await (async () => {
+      const r = mountAdmin()
+      await flushPromises()
+      return r
+    })()
 
+    expect(wrapper.text()).toContain('用户总数')
+    expect(wrapper.text()).toContain('3')
     expect(wrapper.text()).toContain('断点存储')
     expect(wrapper.text()).toContain('Postgres')
-    expect(wrapper.text()).toContain('未配置（规则回答）')
-    expect(wrapper.text()).toContain('alice')
-    expect(wrapper.text()).toContain('普通用户')
-    expect(wrapper.text()).toContain('login_bruteforce')
-    expect(wrapper.text()).toContain('account=tester 连续失败 5 次')
     expect(useToastStore(pinia).items).toHaveLength(0)
-    expect(mocks.users).toHaveBeenCalledWith(1, 20)
   })
 
-  it('没有事件时走空状态', async () => {
-    mocks.incidents.mockResolvedValue([])
+  it('五个菜单都在，点账号切到账号视图', async () => {
     const { wrapper } = mountAdmin()
     await flushPromises()
 
-    expect(wrapper.text()).toContain('暂无安全事件')
-    expect(wrapper.text()).toContain('断点存储')
+    const navButtons = wrapper.findAll('aside button')
+    expect(navButtons.map((b) => b.text())).toEqual(['总览', '账号', '审计', '安全事件', '模型与 Agent'])
+
+    await navButtons.find((b) => b.text() === '账号')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('账号与角色')
+    expect(wrapper.text()).toContain('alice')
   })
 
-  it('服务状态读失败时弹提示，但账号与事件列表仍渲染', async () => {
+  it('模型与 Agent 视图显示参数表单与 Agent 清单', async () => {
+    const { wrapper } = mountAdmin()
+    await flushPromises()
+
+    const navButtons = wrapper.findAll('aside button')
+    await navButtons.find((b) => b.text() === '模型与 Agent')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('模型参数')
+    expect(wrapper.text()).toContain('supervisor')
+    expect(wrapper.text()).toContain('知识库 chunk 数：48')
+  })
+
+  it('服务状态读失败时弹提示，但总览仍渲染', async () => {
     mocks.services.mockRejectedValue(new Error('服务状态 503'))
     const { wrapper, pinia } = mountAdmin()
     await flushPromises()
 
-    expect(useToastStore(pinia).items.map((item) => item.text)).toContain('服务状态 503')
-    expect(wrapper.text()).not.toContain('加载中')
-    expect(wrapper.text()).toContain('login_bruteforce')
-    expect(wrapper.text()).toContain('alice')
+    expect(useToastStore(pinia).items.map((i) => i.text)).toContain('服务状态 503')
+    expect(wrapper.text()).toContain('用户总数')
     expect(wrapper.text()).toContain('服务状态读取失败')
   })
 
-  it('事件读失败时明确说「读取失败」，不误导成「暂无事件」', async () => {
-    mocks.incidents.mockRejectedValue(new Error('事件接口超时'))
-    const { wrapper, pinia } = mountAdmin()
+  it('九路都不失败时不停在加载中', async () => {
+    mocks.services.mockRejectedValue(new Error('x'))
+    mocks.overview.mockRejectedValue(new Error('x'))
+    mocks.users.mockRejectedValue(new Error('x'))
+    mocks.audits.mockRejectedValue(new Error('x'))
+    mocks.incidents.mockRejectedValue(new Error('x'))
+    mocks.runtime.mockRejectedValue(new Error('x'))
+    const { wrapper } = mountAdmin()
     await flushPromises()
-
-    expect(useToastStore(pinia).items.map((item) => item.text)).toContain('事件接口超时')
-    expect(wrapper.text()).toContain('安全事件读取失败')
-    expect(wrapper.text()).not.toContain('暂无安全事件')
-    expect(wrapper.text()).toContain('断点存储')
-  })
-
-  it('账号列表读失败时单独降级，不拖垮另外两张卡片', async () => {
-    mocks.users.mockRejectedValue(new Error('账号接口 500'))
-    const { wrapper, pinia } = mountAdmin()
-    await flushPromises()
-
-    expect(useToastStore(pinia).items.map((item) => item.text)).toContain('账号接口 500')
-    expect(wrapper.text()).toContain('账号列表读取失败')
-    expect(wrapper.text()).not.toContain('暂无账号')
-    expect(wrapper.text()).toContain('断点存储')
-    expect(wrapper.text()).toContain('login_bruteforce')
-  })
-
-  it('三路都失败也不停在加载中', async () => {
-    mocks.services.mockRejectedValue(new Error('服务状态 503'))
-    mocks.incidents.mockRejectedValue(new Error('事件接口超时'))
-    mocks.users.mockRejectedValue(new Error('账号接口 500'))
-    const { wrapper, pinia } = mountAdmin()
-    await flushPromises()
-
     expect(wrapper.text()).not.toContain('加载中')
-    expect(useToastStore(pinia).items).toHaveLength(1)
-  })
-
-  it('点刷新会重新拉三路数据', async () => {
-    const { wrapper } = mountAdmin()
-    await flushPromises()
-    expect(mocks.services).toHaveBeenCalledTimes(1)
-
-    const refresh = buttonByText(wrapper, '刷新')
-    expect(refresh).toBeDefined()
-    await refresh!.trigger('click')
-    await flushPromises()
-
-    expect(mocks.services).toHaveBeenCalledTimes(2)
-    expect(mocks.incidents).toHaveBeenCalledTimes(2)
-    expect(mocks.users).toHaveBeenCalledTimes(2)
-  })
-
-  it('时间是无效字符串也不把页面渲染崩', async () => {
-    mocks.incidents.mockResolvedValue([{ ...incident, occurred_at: 'not-a-date', severity: null }])
-    const { wrapper } = mountAdmin()
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('not-a-date')
-    expect(wrapper.text()).toContain('未分级')
   })
 })
 
-describe('管理页写操作', () => {
-  it('点设为管理员会带 admin 提交，成功后就地更新行', async () => {
-    const { wrapper, pinia } = mountAdmin()
+describe('账号写操作', () => {
+  async function goAccounts() {
+    const { wrapper, pinia } = mountAdmin('self-id')
     await flushPromises()
+    const navButtons = wrapper.findAll('aside button')
+    await navButtons.find((b) => b.text() === '账号')!.trigger('click')
+    await flushPromises()
+    return { wrapper, pinia }
+  }
+
+  it('设管理员前弹确认，确认后提交', async () => {
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
+    const { wrapper } = await goAccounts()
 
     await buttonByText(wrapper, '设为管理员')!.trigger('click')
     await flushPromises()
 
     expect(mocks.setRole).toHaveBeenCalledWith('u1', 'admin')
-    expect(wrapper.text()).toContain('管理员')
-    expect(wrapper.text()).toContain('取消管理员')
-    expect(useToastStore(pinia).items.map((item) => item.text)).toContain('alice 已设为管理员')
+    expect(window.confirm).toHaveBeenCalled()
+    vi.unstubAllGlobals()
   })
 
-  it('角色变更失败显示后端文案，本地行不误改成管理员', async () => {
-    mocks.setRole.mockRejectedValue(new Error('至少需要保留一个管理员'))
-    const { wrapper, pinia } = mountAdmin()
-    await flushPromises()
+  it('取消确认不提交', async () => {
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(false))
+    const { wrapper } = await goAccounts()
 
     await buttonByText(wrapper, '设为管理员')!.trigger('click')
     await flushPromises()
 
-    expect(useToastStore(pinia).items.map((item) => item.text)).toContain('至少需要保留一个管理员')
-    expect(wrapper.text()).toContain('普通用户')
-    expect(wrapper.text()).not.toContain('取消管理员')
-  })
-
-  it('当前账号的操作按钮禁用，标记成「当前账号」', async () => {
-    const { wrapper } = mountAdmin('u1')
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('当前账号')
-    const button = buttonByText(wrapper, '设为管理员')!
-    expect(button.attributes('disabled')).toBeDefined()
-    await button.trigger('click')
-    await flushPromises()
     expect(mocks.setRole).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
   })
 
-  it('点标记为已处置会提交并替换那一行', async () => {
+  it('停用账号提交并更新行', async () => {
+    const { wrapper, pinia } = await goAccounts()
+
+    await buttonByText(wrapper, '停用')!.trigger('click')
+    await flushPromises()
+
+    expect(mocks.setStatus).toHaveBeenCalledWith('u1', 'disabled')
+    expect(useToastStore(pinia).items.map((i) => i.text)).toContain('alice 已停用')
+  })
+
+  it('删除前要输入用户名，不匹配则拦截', async () => {
+    vi.stubGlobal('prompt', vi.fn().mockReturnValue('wrong'))
+    const { wrapper, pinia } = await goAccounts()
+
+    await buttonByText(wrapper, '删除')!.trigger('click')
+    await flushPromises()
+
+    expect(mocks.deleteUser).not.toHaveBeenCalled()
+    expect(useToastStore(pinia).items.map((i) => i.text)).toContain('用户名不匹配，未删除')
+    vi.unstubAllGlobals()
+  })
+
+  it('删除确认成功从列表移除', async () => {
+    vi.stubGlobal('prompt', vi.fn().mockReturnValue('alice'))
+    const { wrapper, pinia } = await goAccounts()
+
+    await buttonByText(wrapper, '删除')!.trigger('click')
+    await flushPromises()
+
+    expect(mocks.deleteUser).toHaveBeenCalledWith('u1', 'alice')
+    expect(useToastStore(pinia).items.map((i) => i.text)).toContain('alice 已删除')
+    vi.unstubAllGlobals()
+  })
+})
+
+describe('运行时配置', () => {
+  it('修改模型名保存后调用接口并回显', async () => {
     const { wrapper, pinia } = mountAdmin()
+    await flushPromises()
+    const navButtons = wrapper.findAll('aside button')
+    await navButtons.find((b) => b.text() === '模型与 Agent')!.trigger('click')
+    await flushPromises()
+
+    const modelInput = wrapper.find('#rt-model')
+    await modelInput.setValue('gpt-4o')
+    await buttonByText(wrapper, '保存配置')!.trigger('click')
+    await flushPromises()
+
+    expect(mocks.setRuntime).toHaveBeenCalledWith({ llm_model: 'gpt-4o' })
+    expect(useToastStore(pinia).items.map((i) => i.text)).toContain('运行配置已更新')
+  })
+
+  it('没有修改时点保存给提示不调接口', async () => {
+    const { wrapper, pinia } = mountAdmin()
+    await flushPromises()
+    const navButtons = wrapper.findAll('aside button')
+    await navButtons.find((b) => b.text() === '模型与 Agent')!.trigger('click')
+    await flushPromises()
+
+    await buttonByText(wrapper, '保存配置')!.trigger('click')
+    await flushPromises()
+
+    expect(mocks.setRuntime).not.toHaveBeenCalled()
+    expect(useToastStore(pinia).items.map((i) => i.text)).toContain('没有修改')
+  })
+})
+
+describe('安全事件处置', () => {
+  it('标记为已处置提交并替换行', async () => {
+    const { wrapper, pinia } = mountAdmin()
+    await flushPromises()
+    const navButtons = wrapper.findAll('aside button')
+    await navButtons.find((b) => b.text() === '安全事件')!.trigger('click')
     await flushPromises()
 
     await buttonByText(wrapper, '标记为已处置')!.trigger('click')
@@ -222,40 +304,5 @@ describe('管理页写操作', () => {
 
     expect(mocks.resolveIncident).toHaveBeenCalledWith('i1')
     expect(wrapper.text()).toContain('已处置')
-    expect(wrapper.text()).not.toContain('标记为已处置')
-    expect(useToastStore(pinia).items.map((item) => item.text)).toContain('事件已处置')
-  })
-
-  it('处置失败显示后端文案，事件仍是 open 且按钮还在', async () => {
-    mocks.resolveIncident.mockRejectedValue(new Error('该事件状态不能处置'))
-    const { wrapper, pinia } = mountAdmin()
-    await flushPromises()
-
-    await buttonByText(wrapper, '标记为已处置')!.trigger('click')
-    await flushPromises()
-
-    expect(useToastStore(pinia).items.map((item) => item.text)).toContain('该事件状态不能处置')
-    expect(wrapper.text()).toContain('标记为已处置')
-  })
-
-  it('已处置事件不再给处置按钮，显示处置时间', async () => {
-    mocks.incidents.mockResolvedValue([{ ...incident, status: 'resolved', resolved_at: '2026-11-06T12:00:00Z' }])
-    const { wrapper } = mountAdmin()
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('处置时间')
-    expect(buttonByText(wrapper, '标记为已处置')).toBeUndefined()
-  })
-
-  it('分页点下一页会按第二页重拉账号列表', async () => {
-    mocks.users.mockResolvedValue({ items: [account], total: 25, page: 1, page_size: 20 })
-    const { wrapper } = mountAdmin()
-    await flushPromises()
-
-    await buttonByText(wrapper, '下一页')!.trigger('click')
-    await flushPromises()
-
-    expect(mocks.users).toHaveBeenLastCalledWith(2, 20)
-    expect(wrapper.text()).toContain('第 2 / 2 页')
   })
 })

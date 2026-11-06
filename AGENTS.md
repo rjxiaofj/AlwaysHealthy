@@ -54,6 +54,7 @@
 | 密码与文件 | `app/core/security.py`、`app/services/file_service.py` | 哈希算法降级与文件类型绕过 |
 | 启动配置 | `app/core/config.py` | prod 用默认密钥启动等于谁都能签出合法令牌 |
 | 后台管理接口 | `app/api/deps.py::admin_user`、`app/api/v1/endpoints/admin.py`、`app/api/v1/endpoints/security.py` | 少一次角色判断或多返回一个字段，等于把全站账号开出去 |
+| 运行时配置 | `app/core/config.py`、后台模型参数改接口 | 在线改 llm 参数并热生效，改错会停掉整条咨询链路；密钥回显有泄露面 |
 
 ## 4. 数据规则
 

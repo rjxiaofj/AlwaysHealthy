@@ -268,3 +268,225 @@ async def test_resolve_missing_incident_returns_404_and_audits(client, monkeypat
     )
     assert response.status_code == 404
     assert await _audits(session, "resolve_incident", "fail", missing_id)
+
+
+# ---------- 账号停用/启用 ----------
+
+
+async def test_disable_account_blocks_login(client, monkeypatch, session) -> None:
+    admin_tokens, _ = await _admin(client, monkeypatch)
+    target_tokens, target_name = await _register(client)
+    target_id = await _user_id(session, target_name)
+
+    response = await client.patch(
+        f"/api/v1/admin/users/{target_id}/status",
+        headers=_headers(admin_tokens),
+        json={"status": "disabled"},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["status"] == "disabled"
+
+    # 停用后旧令牌不再可用（current_user 校验 status）
+    me = await client.get("/api/v1/users/me", headers=_headers(target_tokens))
+    assert me.status_code == 401
+
+
+async def test_enable_account_restores_access(client, monkeypatch, session) -> None:
+    admin_tokens, _ = await _admin(client, monkeypatch)
+    target_tokens, target_name = await _register(client)
+    target_id = await _user_id(session, target_name)
+
+    await client.patch(
+        f"/api/v1/admin/users/{target_id}/status", headers=_headers(admin_tokens), json={"status": "disabled"}
+    )
+    await client.patch(
+        f"/api/v1/admin/users/{target_id}/status", headers=_headers(admin_tokens), json={"status": "active"}
+    )
+    me = await client.get("/api/v1/users/me", headers=_headers(target_tokens))
+    assert me.status_code == 200
+
+
+async def test_cannot_disable_self(client, monkeypatch, session) -> None:
+    tokens, username = await _admin(client, monkeypatch)
+    own_id = await _user_id(session, username)
+
+    response = await client.patch(
+        f"/api/v1/admin/users/{own_id}/status", headers=_headers(tokens), json={"status": "disabled"}
+    )
+    assert response.status_code == 409
+
+
+# ---------- 账号搜索/筛选 ----------
+
+
+async def test_user_list_filters_by_keyword_and_role(client, monkeypatch) -> None:
+    tokens, _ = await _admin(client, monkeypatch)
+    await _register(client)
+
+    response = await client.get(
+        "/api/v1/admin/users", headers=_headers(tokens), params={"role": "admin"}
+    )
+    items = response.json()["data"]["items"]
+    assert items and all(item["role"] == "admin" for item in items)
+
+
+async def test_user_list_filters_by_keyword(client, monkeypatch) -> None:
+    """keyword 走 ilike 模糊匹配，只返回用户名命中的账号。
+
+    变异脚本 M4 会删掉 `if keyword:` 这一行；没有这条测试，删了也能全绿。
+    """
+    tokens, admin_name = await _admin(client, monkeypatch)
+    _, target_name = await _register(client)
+    # 用一个不会被任何账号撞上的独立前缀，避免「全部命中」喂成假绿
+    probe = target_name[2:8]
+
+    response = await client.get(
+        "/api/v1/admin/users", headers=_headers(tokens), params={"keyword": probe}
+    )
+    assert response.status_code == 200
+    page = response.json()["data"]
+    names = [item["username"] for item in page["items"]]
+    assert names == [target_name]
+
+
+# ---------- 硬删除 ----------
+
+
+async def test_delete_user_requires_matching_confirm(client, monkeypatch, session) -> None:
+    admin_tokens, _ = await _admin(client, monkeypatch)
+    _, target_name = await _register(client)
+    target_id = await _user_id(session, target_name)
+
+    bad = await client.delete(
+        f"/api/v1/admin/users/{target_id}", headers=_headers(admin_tokens), params={"confirm_username": "wrong"}
+    )
+    assert bad.status_code == 409
+    # 没删掉
+    assert await _user_id(session, target_name) is not None
+
+
+async def test_delete_user_succeeds_and_audits(client, monkeypatch, session) -> None:
+    admin_tokens, _ = await _admin(client, monkeypatch)
+    _, target_name = await _register(client)
+    target_id = await _user_id(session, target_name)
+
+    response = await client.delete(
+        f"/api/v1/admin/users/{target_id}",
+        headers=_headers(admin_tokens),
+        params={"confirm_username": target_name},
+    )
+    assert response.status_code == 200
+    assert await _user_id(session, target_name) is None
+    assert await _audits(session, "delete_user", "success", str(target_id))
+
+
+async def test_cannot_delete_self(client, monkeypatch, session) -> None:
+    tokens, username = await _admin(client, monkeypatch)
+    own_id = await _user_id(session, username)
+
+    response = await client.delete(
+        f"/api/v1/admin/users/{own_id}", headers=_headers(tokens), params={"confirm_username": username}
+    )
+    assert response.status_code == 409
+
+
+# ---------- 审计查询 ----------
+
+
+async def test_audit_logs_list_and_filter(client, monkeypatch, session) -> None:
+    tokens, _ = await _admin(client, monkeypatch)
+
+    response = await client.get("/api/v1/admin/audit-logs", headers=_headers(tokens))
+    assert response.status_code == 200
+    page = response.json()["data"]
+    assert set(page) == {"items", "total", "page", "page_size"}
+    assert "register_admin" in [item["action"] for item in page["items"]]
+
+    filtered = await client.get(
+        "/api/v1/admin/audit-logs", headers=_headers(tokens), params={"action": "register_admin"}
+    )
+    assert all(item["action"] == "register_admin" for item in filtered.json()["data"]["items"])
+
+
+# ---------- 统计总览 ----------
+
+
+async def test_overview_returns_counts(client, monkeypatch) -> None:
+    tokens, _ = await _admin(client, monkeypatch)
+    await _register(client)
+
+    response = await client.get("/api/v1/admin/overview", headers=_headers(tokens))
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["user_total"] >= 2
+    assert data["admin_total"] >= 1
+    assert "open_incidents" in data
+    assert "login_fail_today" in data
+    assert "new_users_today" in data
+
+
+# ---------- 运行时配置 ----------
+
+
+async def test_runtime_config_read_and_update(client, monkeypatch) -> None:
+    from app.core import runtime_config
+
+    tokens, _ = await _admin(client, monkeypatch)
+
+    read = await client.get("/api/v1/admin/runtime", headers=_headers(tokens))
+    assert read.status_code == 200
+    assert set(read.json()["data"]) == {"llm_model", "llm_api_key", "embedding_backend"}
+
+    update = await client.patch(
+        "/api/v1/admin/runtime",
+        headers=_headers(tokens),
+        json={"llm_model": "gpt-4o", "embedding_backend": "keyword"},
+    )
+    assert update.status_code == 200
+    assert update.json()["data"]["llm_model"] == "gpt-4o"
+
+    # 内存态与磁盘都已更新
+    assert runtime_config.get("llm_model") == "gpt-4o"
+    # 清理，避免污染其它用例
+    runtime_config.set_and_persist("llm_model", "deepseek-chat")
+
+
+async def test_runtime_config_rejects_unknown_field(client, monkeypatch) -> None:
+    tokens, _ = await _admin(client, monkeypatch)
+    response = await client.patch(
+        "/api/v1/admin/runtime", headers=_headers(tokens), json={"jwt_secret": "hack"}
+    )
+    # extra 字段被忽略，但 jwt_secret 不是可改字段，应不生效且不报错（schema 里没有该字段）
+    assert response.status_code == 200
+
+
+async def test_set_and_persist_rejects_non_runtime_keys(monkeypatch) -> None:
+    """直接咬住 runtime_config 的白名单：非 RUNTIME_KEYS 字段必须抛 ValueError。
+
+    变异脚本 M3 会删掉 `if key not in RUNTIME_KEYS` 这一行；没有这条测试，删了也能全绿。
+    """
+    from app.core import runtime_config
+
+    for bad_key in ("jwt_secret", "secret_key", "database_url", "admin_registration_code"):
+        with pytest.raises(ValueError, match="不支持"):
+            runtime_config.set_and_persist(bad_key, "hack")
+
+
+# ---------- Agent 与工作流状态 ----------
+
+
+async def test_agent_list_returns_names(client, monkeypatch) -> None:
+    tokens, _ = await _admin(client, monkeypatch)
+    response = await client.get("/api/v1/admin/agents", headers=_headers(tokens))
+    assert response.status_code == 200
+    names = [item["name"] for item in response.json()["data"]]
+    assert "supervisor" in names
+    assert "risk_assessment" in names
+
+
+async def test_workflow_stats_returns_counts(client, monkeypatch) -> None:
+    tokens, _ = await _admin(client, monkeypatch)
+    response = await client.get("/api/v1/admin/workflow-stats", headers=_headers(tokens))
+    assert response.status_code == 200
+    assert set(response.json()["data"]) == {"running", "waiting_user", "cancelled", "failed", "completed"}
+

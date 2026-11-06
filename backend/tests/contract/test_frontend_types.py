@@ -146,6 +146,10 @@ NO_MODEL: dict[str, str] = {
     "ConfirmationPayload": "SSE 事件里的确认卡片，不经过模型序列化",
     "ServiceStatus": "GET /health/services 在端点里直接拼 dict，运行时见 test_admin_service_status_keys",
     "SecurityIncident": "security_repo.as_dict 拼 dict，运行时见 test_security_incident_keys",
+    "RuntimeConfig": "runtime_config.snapshot 拼 dict，运行时见 test_admin_runtime_keys",
+    "AgentStatus": "admin_service.agent_status 拼 dict，运行时见 test_admin_agent_keys",
+    "AdminOverview": "admin_repo.overview_counts 拼 dict，运行时见 test_admin_overview_keys",
+    "AuditLog": "admin_service._audit_dict 拼 dict，运行时见 test_admin_audit_keys",
 }
 
 
@@ -534,6 +538,55 @@ async def test_admin_service_status_keys(client, auth, session):
     response = await client.get("/health/services", headers=auth)
     assert response.status_code == 200
     assert _missing(response.json()["data"], "ServiceStatus") == []
+
+
+@pytest.mark.asyncio
+async def test_admin_runtime_keys(client, auth, session):
+    await _make_admin(session, auth["username"])
+    response = await client.get("/api/v1/admin/runtime", headers=auth)
+    assert response.status_code == 200
+    assert _missing(response.json()["data"], "RuntimeConfig") == []
+
+
+@pytest.mark.asyncio
+async def test_admin_agent_keys(client, auth, session):
+    await _make_admin(session, auth["username"])
+    response = await client.get("/api/v1/admin/agents", headers=auth)
+    assert response.status_code == 200
+    assert response.json()["data"]
+    assert _missing(response.json()["data"][0], "AgentStatus") == []
+
+
+@pytest.mark.asyncio
+async def test_admin_overview_keys(client, auth, session):
+    await _make_admin(session, auth["username"])
+    response = await client.get("/api/v1/admin/overview", headers=auth)
+    assert response.status_code == 200
+    assert _missing(response.json()["data"], "AdminOverview") == []
+
+
+@pytest.mark.asyncio
+async def test_admin_audit_keys(client, auth, session):
+    await _make_admin(session, auth["username"])
+    # _make_admin 用 update 直接改库、不写审计，这里补一条，否则列表为空
+    from app.repositories import chat as chat_repo
+
+    chat_repo.audit(
+        session,
+        actor_user_id=None,
+        action="login",
+        resource_type="user",
+        resource_id=auth["username"],
+        result="fail",
+        request_id="test",
+    )
+    await session.commit()
+
+    response = await client.get("/api/v1/admin/audit-logs", headers=auth)
+    assert response.status_code == 200
+    items = response.json()["data"]["items"]
+    assert items
+    assert _missing(items[0], "AuditLog") == []
 
 
 @pytest.mark.asyncio

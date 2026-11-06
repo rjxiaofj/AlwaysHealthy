@@ -152,16 +152,21 @@ class KeywordRetriever:
 
 
 _retriever: KeywordRetriever | None = None
+_retriever_backend: str | None = None
 
 
 def get_retriever() -> KeywordRetriever:
-    global _retriever
-    if _retriever is None:
-        settings = get_settings()
-        if settings.embedding_backend == "bge":
+    global _retriever, _retriever_backend
+    from app.core import runtime_config
+
+    backend = runtime_config.get("embedding_backend", get_settings().embedding_backend)
+    # 后台在线切了检索通道就重建单例，两套索引不能混用
+    if _retriever is None or _retriever_backend != backend:
+        if backend == "bge":
             from app.integrations.chroma_client import VectorRetriever
 
             _retriever = VectorRetriever()
         else:
             _retriever = KeywordRetriever()
+        _retriever_backend = backend
     return _retriever

@@ -94,11 +94,53 @@
 - `test_last_admin_cannot_be_demoted` 初版假绿：测试库全量用例共用，前面已建了多个 admin，`count_admins <= 1` 不成立。改成先把其他账号降权、断言库里确实只剩一个 admin 再触发护栏；`_audits` 也必须按 `resource_id` 过滤，否则别的用例留下的审计行会喂出假绿。
 - `resolved_at` 字符串不一致：见上文 `as_dict` 的时区归一化。
 
-## 残留取舍
+## 后续扩展：完整后台管理方案（本轮）
 
-1. 账号列表只按创建时间排序、不带搜索与筛选；账号规模大时翻页找人不方便。
-2. 未做账号停用/启用、删除、事件重开、批量操作。规则里也没要求，但要加必须先走影响分析。
-3. 角色变更没有二次确认弹窗，点一下就生效，靠后端护栏与审计兜底；演示够用，正式系统建议加确认并记录变更原因。
-4. 「末位管理员」护栏在现有接口路径下不可达：操作者本身必须是 admin，自改又被禁，所以库里至少有两个 admin 才能触发降权分支。用服务层用例单独守着它，防的是将来放开自改或并发降权。
-5. 角色变更不主动吊销目标账号已有令牌：`admin_user` 每次读库，所以降权立刻生效；但令牌里原有的 role 字段仍是旧值，只作展示，不作权限判断。
-6. 管理页首屏现在并发读三路，任一失败只弹第一条错误文案，避免刷屏；后两路失败靠卡片上的「读取失败」空态区分。
+用户确认后台要升级为完整方案，决策：侧边栏多菜单 + 账号停用/搜索/硬删除 + 审计查询 + 事件筛选 + 统计总览 + 模型与 Agent 在线管理（含 llm_api_key 明文回显 + 热生效）。
+
+### 技术栈结论
+
+完全沿用现有 FastAPI + Vue3 + Pinia + Tailwind + SQLAlchemy async，**不新增任何框架/UI 库/图表库/调度器**。禁止为后台单独引入 Element Plus。
+
+### 新增改动
+
+**运行时可变配置（新层）**
+
+- 新增 `app/core/runtime_config.py`：只允许在线改 `llm_model` / `llm_api_key` / `embedding_backend` 三个字段，内存态 + 持久化到 `runtime_config.json`（gitignore，不写 `.env` 避免和 compose env 注入冲突）。
+- `LLMClient` 的 `model` / `api_key` 改成 property 读 `runtime_config.get()`，改配置后下一次调用即热生效。
+- `get_retriever()` 按 `embedding_backend` 记录当前后端，改了就重建单例（keyword <-> bge 两套索引不混用）。
+- `main.py` 的 lifespan 启动时 `runtime_config.load_overrides()`。
+- `/health/services` 增加 `llm_model`，`llm_configured` 改读运行时配置。
+
+**后端接口（全部 `admin_user`）**
+
+- `GET /admin/overview`：用户总数 / 管理员数 / 待处置事件 / 今日登录失败 / 今日新增账号。
+- `GET /admin/users` 增加 `keyword` / `role` / `status` 过滤。
+- `PATCH /admin/users/{id}/status`：停用/启用，停用后登录 401。
+- `DELETE /admin/users/{id}`：硬删除，`confirm_username` 必须匹配、禁删自己、禁删末位管理员，级联 `ondelete=CASCADE`。
+- `GET /admin/audit-logs`：分页 + `action` / `actor_user_id` / `result` 过滤。
+- `GET /admin/incidents`：`status` / `severity` 过滤。
+- `GET /admin/runtime`、`PATCH /admin/runtime`：回显与修改运行时配置，审计只记改的字段名、不记 key 明文。
+- `GET /admin/agents`、`GET /admin/workflow-stats`、`GET /admin/knowledge`：Agent 清单、工作流状态统计、知识库 chunk 数。
+
+**前端**
+
+- `AdminView.vue` 改为侧边栏多菜单（总览 / 账号 / 审计 / 安全事件 / 模型与 Agent），九路接口 `Promise.allSettled` 各自降级。
+- 账号视图：搜索/筛选、停用启用、删除（`window.prompt` 输入用户名二次确认）、角色变更（`window.confirm`）。
+- 模型与 Agent 视图：模型参数表单（key 明文回显）、Agent 清单、工作流统计、知识库 chunk 数。
+
+### 验证
+
+- 后端 **348 passed**（新增停用/搜索/删除/审计/总览/运行时/Agent 共 9 条 + 契约守卫 5 条运行时键断言）。
+- 前端 **221 passed**（`AdminView.spec.ts` 从 15 条重写为 13 条多菜单用例），typecheck / build / size 全绿（首屏 50.5/58 kB、totalJs 93.1/100 kB）。
+- 顺手修了既有的时间敏感假红：`test_features.py` 的 NH-07 在跨天时段（凌晨）会因任务未到点而不生成 `task_due` 提醒，补 `_freeze_to_late_evening` autouse fixture 把 `business_now` 钉到 23:59，与 `test_reminder_switch.py` 同款。
+
+### 残留取舍（本轮）
+
+1. `llm_api_key` 明文回显给管理员（用户明确要求），风险是管理员会话泄露即密钥泄露；审计与日志不记明文，但界面上能看到。正式系统建议改为只写不回显。
+2. 在线改 `embedding_backend` 为 `bge` 时，若未装 `requirements-vector.txt` 或未起 chroma，重建 retriever 会失败；接口当前不预检，错误在下次检索时才暴露。
+3. 硬删除账号不可恢复，级联清空该用户全部健康数据；靠 `confirm_username` 二次确认 + 禁删自己/末位管理员兜底。
+4. 运行时配置持久化在 `runtime_config.json`，与 `.env` 分离；两者同时存在时运行时覆盖 `.env`。多实例部署下各实例内存态不共享，单机部署成立。
+5. Agent 清单的 `loaded` 只反映 graph_service 是否加载，是进程级布尔，不是每个 agent 独立的加载状态；要做细粒度需在节点注册处挂标志。
+
+

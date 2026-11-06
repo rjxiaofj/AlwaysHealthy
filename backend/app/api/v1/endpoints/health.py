@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import admin_user, db_session
 from app.core.config import get_settings
+from app.core import runtime_config
 from app.core.response import ok
 from app.db.models import User
 from app.tools.knowledge_base import retriever as retriever_module
@@ -44,8 +45,9 @@ async def services(request: Request, user: User = Depends(admin_user)):
         request,
         {
             "checkpointer": settings.checkpointer,
-            "embedding_backend": settings.embedding_backend,
-            "llm_configured": bool(settings.llm_api_key),
+            "embedding_backend": runtime_config.get("embedding_backend", settings.embedding_backend),
+            "llm_configured": bool(runtime_config.get("llm_api_key", settings.llm_api_key)),
+            "llm_model": runtime_config.get("llm_model", settings.llm_model),
             "graph_loaded": getattr(request.app.state, "graph_service", None) is not None,
         },
     )

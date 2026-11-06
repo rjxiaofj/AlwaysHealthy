@@ -3,7 +3,9 @@
 NH-01 注册登录与刷新轮换在 test_auth.py。
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
+
+import pytest
 
 from tests.helpers import (
     activate_plan,
@@ -13,6 +15,20 @@ from tests.helpers import (
     run_assessment_to_report,
     today_task_id,
 )
+
+
+@pytest.fixture(autouse=True)
+def _freeze_to_late_evening(monkeypatch):
+    """把「现在」钉在深夜，让今天的任务提醒都算已到点。
+
+    NH-07 断言今天任务一定会生成 task_due 提醒，但提醒按任务 scheduled_time 判断要不要催，
+    凌晨跑测试时晚间任务未到点会被跳过，断言随一天里的运行时间飘。固定到深夜让语义稳定。
+    """
+    from app.services import reminder_service
+
+    late = datetime(2026, 11, 5, 23, 59, tzinfo=timezone(timedelta(hours=8)))
+    monkeypatch.setattr(reminder_service, "business_now", lambda: late)
+    yield
 
 
 async def test_nh_02_profile_save_and_bmi(client, auth):

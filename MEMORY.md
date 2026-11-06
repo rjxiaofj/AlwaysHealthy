@@ -757,6 +757,16 @@ CI 上一向是绿的、只要 25 秒，因为 `.env` 不入库、密钥为空�
 - 验证别只靠单测：happy-dom 不算布局，用真浏览器 `getBoundingClientRect()` 量「用户登录 → 管理员登录 → 管理员注册 → 切回用户登录」四态，同时确认 `aria-selected` 与标题变了，排除点击没生效的假绿。桌面 1440x1000、手机 390x844、矮视口 375x667 都量过。
 - 新增 3 条布局稳定回归（节点身份不增删、错误行常驻、注册切回不残留），前端 220 → 223 条。后端 331、typecheck/build/size 全绿。详见 `docs/impact/2026-11-06-login-layout-stable.md`。
 
+## 2026-11-06 后台管理完整方案落地
+
+用户把后台从「只读看板」升级成「完整后台管理系统」，决策：侧边栏多菜单 + 账号停用/搜索/硬删除 + 审计查询 + 事件筛选 + 统计总览 + 模型与 Agent 在线管理（llm_api_key 明文回显 + 热生效）。技术栈完全沿用现有，不新增任何框架。
+
+- **运行时可变配置层**（`app/core/runtime_config.py`）：只允许在线改 `llm_model`/`llm_api_key`/`embedding_backend`，内存态 + 持久化到 `runtime_config.json`（gitignore，不写 `.env` 避免和 compose env 注入冲突）。`LLMClient.model/api_key` 改 property 读运行时值实现热生效；`get_retriever` 按 backend 记录当前值、变了就重建单例。
+- 后端接口全挂 `admin_user`：overview、users 过滤、status 停用、DELETE 硬删（confirm_username 匹配 + 禁删自己/末位 admin + CASCADE）、audit-logs 过滤、incidents 过滤、runtime 读写、agents/workflow-stats/knowledge。
+- 硬删除靠 `window.prompt` 输入用户名二次确认；角色变更靠 `window.confirm`。前端改侧边栏五菜单、九路接口 `Promise.allSettled` 各自降级。
+- 后端 348、前端 221 全绿。**顺手修了既有时间敏感假红**：`test_features.py` NH-07 跨天凌晨会因任务未到点不生成提醒，补 `_freeze_to_late_evening` autouse fixture 钉 business_now 到 23:59。
+- 关键取舍：llm_api_key 明文回显（用户要求，安全上建议改只写不回显）；bge 切换不预检依赖；硬删不可恢复；runtime_config 单机成立多实例不共享；Agent loaded 是进程级布尔不是每个 agent 独立状态。
+
 ## 已知取舍
 
 

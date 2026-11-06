@@ -64,10 +64,19 @@ async def add_incident(
     return incident
 
 
-async def incidents_of(session: AsyncSession, limit: int = 20) -> list[SecurityIncident]:
-    rows = await session.scalars(
-        select(SecurityIncident).order_by(SecurityIncident.occurred_at.desc()).limit(limit)
-    )
+async def incidents_of(
+    session: AsyncSession,
+    limit: int = 20,
+    *,
+    status: str | None = None,
+    severity: str | None = None,
+) -> list[SecurityIncident]:
+    query = select(SecurityIncident)
+    if status:
+        query = query.where(SecurityIncident.status == status)
+    if severity:
+        query = query.where(SecurityIncident.severity == severity)
+    rows = await session.scalars(query.order_by(SecurityIncident.occurred_at.desc()).limit(limit))
     return list(rows)
 
 

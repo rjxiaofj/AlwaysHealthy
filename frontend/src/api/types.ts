@@ -39,7 +39,42 @@ export interface ServiceStatus {
   checkpointer: string
   embedding_backend: string
   llm_configured: boolean
+  llm_model: string
   graph_loaded: boolean
+}
+
+/** GET /api/v1/admin/runtime，模型参数可在线改可回显 */
+export interface RuntimeConfig {
+  llm_model: string
+  llm_api_key: string
+  embedding_backend: string
+}
+
+/** GET /api/v1/admin/agents 的单个 Agent 状态 */
+export interface AgentStatus {
+  name: string
+  loaded: boolean
+}
+
+/** GET /api/v1/admin/overview 的统计总览 */
+export interface AdminOverview {
+  user_total: number
+  admin_total: number
+  open_incidents: number
+  login_fail_today: number
+  new_users_today: number
+}
+
+/** GET /api/v1/admin/audit-logs 的单条审计记录 */
+export interface AuditLog {
+  id: string
+  actor_user_id: string | null
+  action: string
+  resource_type: string
+  resource_id: string | null
+  result: string
+  request_id: string | null
+  created_at: string
 }
 
 /** GET /api/v1/admin/users 的账号元数据，后端 AdminUserOut 白名单 */

@@ -21,3 +21,13 @@ class AdminUserOut(BaseModel):
 
 class RolePatchIn(BaseModel):
     role: Literal["user", "admin"]
+
+
+class StatusPatchIn(BaseModel):
+    status: Literal["active", "disabled"]
+
+
+class RuntimePatchIn(BaseModel):
+    llm_model: str | None = None
+    llm_api_key: str | None = None
+    embedding_backend: Literal["keyword", "bge"] | None = None

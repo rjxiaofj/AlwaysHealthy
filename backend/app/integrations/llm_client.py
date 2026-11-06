@@ -5,6 +5,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.core import runtime_config
 
 log = get_logger(__name__)
 
@@ -16,10 +17,17 @@ class LLMUnavailable(RuntimeError):
 class LLMClient:
     def __init__(self) -> None:
         settings = get_settings()
+        # base_url / timeout 仍是只读配置，只有 model / key 允许后台在线改
         self.base_url = settings.llm_base_url.rstrip("/")
-        self.api_key = settings.llm_api_key
-        self.model = settings.llm_model
         self.timeout = settings.llm_timeout_seconds
+
+    @property
+    def model(self) -> str:
+        return runtime_config.get("llm_model", get_settings().llm_model)
+
+    @property
+    def api_key(self) -> str:
+        return runtime_config.get("llm_api_key", get_settings().llm_api_key)
 
     @property
     def ready(self) -> bool:

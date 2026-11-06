@@ -1,8 +1,11 @@
 import { api } from './client'
 import type {
   AccountRole,
+  AdminOverview,
   AdminUser,
+  AgentStatus,
   Assessment,
+  AuditLog,
   AssessmentSummary,
   ChatMessage,
   ConsentRecord,
@@ -20,6 +23,7 @@ import type {
   Reminder,
   ReportDetail,
   ReportSummary,
+  RuntimeConfig,
   SecurityIncident,
   ServiceStatus,
   TokenPayload,
@@ -49,13 +53,31 @@ export const authApi = {
 export const adminApi = {
   // /health/* 挂在 app 根路径（compose healthcheck 也用 /health/live），不在版本前缀下
   services: () => api<ServiceStatus>('/health/services', { base: '' }),
-  incidents: (limit = 20) => api<SecurityIncident[]>('/security/incidents', { params: { limit } }),
-  users: (page = 1, pageSize = 20) =>
-    api<PageData<AdminUser>>('/admin/users', { params: { page, page_size: pageSize } }),
-  setRole: (id: string, role: AccountRole) =>
-    api<AdminUser>(`/admin/users/${id}/role`, { method: 'PATCH', body: { role } }),
+  incidents: (limit = 20, status?: string, severity?: string) =>
+    api<SecurityIncident[]>('/admin/incidents', { params: { limit, status, severity } }),
   resolveIncident: (id: string) =>
     api<SecurityIncident>(`/admin/incidents/${id}/resolve`, { method: 'POST', body: {} }),
+  users: (page = 1, pageSize = 20, filters?: { keyword?: string; role?: string; status?: string }) =>
+    api<PageData<AdminUser>>('/admin/users', {
+      params: { page, page_size: pageSize, ...filters },
+    }),
+  setRole: (id: string, role: AccountRole) =>
+    api<AdminUser>(`/admin/users/${id}/role`, { method: 'PATCH', body: { role } }),
+  setStatus: (id: string, status: 'active' | 'disabled') =>
+    api<AdminUser>(`/admin/users/${id}/status`, { method: 'PATCH', body: { status } }),
+  deleteUser: (id: string, confirmUsername: string) =>
+    api<null>(`/admin/users/${id}`, { method: 'DELETE', params: { confirm_username: confirmUsername } }),
+  overview: () => api<AdminOverview>('/admin/overview'),
+  audits: (page = 1, pageSize = 20, filters?: { action?: string; actor_user_id?: string; result?: string }) =>
+    api<PageData<AuditLog>>('/admin/audit-logs', {
+      params: { page, page_size: pageSize, ...filters },
+    }),
+  runtime: () => api<RuntimeConfig>('/admin/runtime'),
+  setRuntime: (payload: Partial<RuntimeConfig>) =>
+    api<RuntimeConfig>('/admin/runtime', { method: 'PATCH', body: payload }),
+  agents: () => api<AgentStatus[]>('/admin/agents'),
+  workflowStats: () => api<Record<string, number>>('/admin/workflow-stats'),
+  knowledge: () => api<{ chunks: number }>('/admin/knowledge'),
 }
 
 export const profileApi = {
