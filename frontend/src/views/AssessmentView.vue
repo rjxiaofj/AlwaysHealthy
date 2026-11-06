@@ -33,6 +33,10 @@ async function load() {
     const [latest, list] = await Promise.all([assessmentApi.latest(), assessmentApi.list(1, 10)])
     current.value = latest
     history.value = list.items
+  } catch (error) {
+    // 没有 catch 时首屏读失败会掉进「还没有可用的评估」空状态，
+    // 用户以为自己没做过评估，其实是这次没读出来
+    toast.error(error instanceof Error ? error.message : '读取评估失败')
   } finally {
     loading.value = false
   }
