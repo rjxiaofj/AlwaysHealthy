@@ -60,6 +60,32 @@ const hovered = computed(() => {
   return { series: active.value.series, point }
 })
 
+// 几何层会丢掉全是无效值的序列，单位按 key 查，别按数组下标直接对 props.series
+const unitByKey = computed(() => new Map(props.series.map((item) => [item.key, item.unit])))
+
+/**
+ * 悬停某一天时把各序列在这一天的测量一起列出来。
+ * 横轴已经按日期对齐了，提示框却只报一条线的话，对齐的意义就少了一半；
+ * 没测的指标直接不列，不拿别天的值凑数。
+ */
+const sameDateRows = computed(() => {
+  const hover = hovered.value
+  if (!hover) return []
+  return layout.value.series.flatMap((item, index) => {
+    const point = item.points.find((candidate) => candidate.date === hover.point.date)
+    if (!point) return []
+    return [
+      {
+        key: item.key,
+        label: item.label,
+        unit: unitByKey.value.get(item.key) || '',
+        value: point.value,
+        color: colorAt(index),
+      },
+    ]
+  })
+})
+
 const tooltipStyle = computed(() => {
   const hover = hovered.value
   if (!hover) return {}
@@ -150,10 +176,10 @@ function handleMove(event: PointerEvent) {
           v-for="(point, index) in item.points"
           :key="`dot-${seriesIndex}-${index}`"
           class="chart-dot"
-          :class="{ 'is-active': active?.series === seriesIndex && active?.index === index }"
+          :class="{ 'is-active': hovered?.point.date === point.date }"
           :cx="point.x"
           :cy="point.y"
-          :r="active?.series === seriesIndex && active?.index === index ? 4.5 : 2.8"
+          :r="hovered?.point.date === point.date ? 4.5 : 2.8"
           :fill="colorAt(seriesIndex)"
         />
       </template>
@@ -166,10 +192,12 @@ function handleMove(event: PointerEvent) {
       </p>
 
       <div v-if="hovered" class="chart-tooltip" :style="tooltipStyle">
-        <p class="chart-tooltip-title">{{ layout.series[hovered.series].label }}</p>
-        <p class="chart-tooltip-value">
-          {{ hovered.point.value }}<span class="chart-tooltip-unit">{{ series[hovered.series].unit }}</span>
-        </p>
+        <p class="chart-tooltip-title">{{ hovered.point.label }}</p>
+        <div v-for="row in sameDateRows" :key="row.key" class="chart-tooltip-row">
+          <span class="inline-block h-[3px] w-3 shrink-0 rounded" :style="{ background: row.color }" />
+          <span class="chart-tooltip-name">{{ row.label }}</span>
+          <span class="chart-tooltip-num">{{ row.value }}<span class="chart-tooltip-unit">{{ row.unit }}</span></span>
+        </div>
       </div>
     </div>
 
@@ -229,12 +257,25 @@ function handleMove(event: PointerEvent) {
 }
 
 .chart-tooltip-title {
+  margin-bottom: 3px;
   font-size: 11px;
   color: var(--color-text-tertiary);
 }
 
-.chart-tooltip-value {
-  font-size: 14px;
+.chart-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.chart-tooltip-name {
+  flex: 1;
+}
+
+.chart-tooltip-num {
   font-weight: 600;
   color: var(--color-text-primary);
 }

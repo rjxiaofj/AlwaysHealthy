@@ -223,28 +223,135 @@ describe('多序列对比几何', () => {
     expect(Math.max(...ticks)).toBeGreaterThanOrEqual(130)
   })
 
-  it('每条序列各自铺满横轴，首尾点在画布两端', () => {
+  it('横轴是各序列日期的并集，同一天的测量落在同一条竖线上', () => {
+    const at = (day: string, value: number) => ({ measured_at: `2026-11-${day}T08:00:00`, value })
     const layout = buildMultiChart(
-      [series('a', 'A', [1, 2, 3]), series('b', 'B', [5, 6])],
+      [
+        { key: 'a', label: 'A', points: [at('01', 1), at('02', 2), at('03', 3)] },
+        // 这条线晚一天才开始测，旧实现会把它按点数重新铺满，11-02 就被拉到左端了
+        { key: 'b', label: 'B', points: [at('02', 4), at('03', 5)] },
+      ],
       { width: 600, height: 260 },
     )
 
-    for (const item of layout.series) {
-      const first = item.points[0]
-      const last = item.points[item.points.length - 1]
-      expect(first.x).toBeCloseTo(46)
-      expect(last.x).toBeCloseTo(600 - 16)
-    }
+    expect(layout.dates).toEqual(['2026-11-01', '2026-11-02', '2026-11-03'])
+    // 两条线在 11-02 的点横坐标必须相等，否则「同一天一起涨了没有」根本没法看
+    expect(layout.series[0].points[1].x).toBe(layout.series[1].points[0].x)
+    expect(layout.series[1].points[0].x).toBeGreaterThan(46)
+    expect(layout.series[1].points[1].x).toBeCloseTo(600 - 16)
   })
 
-  it('横轴刻度用点数最多的序列，避免空出大半截', () => {
+  it('共享轴取所有序列的日期，后一条序列多出来的日期也要算进来', () => {
+    const at = (day: string, value: number) => ({ measured_at: `2026-11-${day}T08:00:00`, value })
+    const layout = buildMultiChart(
+      [
+        // 故意让第一条最稀疏：只取首条序列的日期时，后两条线会被挤到中间
+        { key: 'a', label: 'A', points: [at('01', 1)] },
+        { key: 'b', label: 'B', points: [at('01', 2), at('02', 3), at('03', 4)] },
+      ],
+      { width: 600, height: 260 },
+    )
+
+    expect(layout.dates).toEqual(['2026-11-01', '2026-11-02', '2026-11-03'])
+    expect(layout.series[0].points[0].x).toBeCloseTo(46)
+    expect(layout.series[1].points[2].x).toBeCloseTo(600 - 16)
+    expect(layout.xTicks[layout.xTicks.length - 1].text).toBe('11-03')
+  })
+
+  it('横轴刻度覆盖共享日期轴，不随某条稀疏序列缩短', () => {
     const layout = buildMultiChart(
       [series('sparse', '少', [1, 2]), series('dense', '多', [1, 2, 3, 4, 5])],
       { width: 600, height: 260 },
     )
 
+    expect(layout.dates).toHaveLength(5)
     const lastTick = layout.xTicks[layout.xTicks.length - 1]
-    expect(lastTick.x).toBeCloseTo(layout.series[1].points[4].x)
+    expect(lastTick.x).toBeCloseTo(600 - 16)
+    expect(lastTick.text).toBe('11-05')
+  })
+
+  it('缺测的日期留空档，横向间距按真实天数铺开', () => {
+    const dense = ['01', '02', '03', '04', '05'].map((day, index) => ({
+      measured_at: `2026-11-${day}T08:00:00`,
+      value: index + 1,
+    }))
+    const layout = buildMultiChart(
+      [
+        { key: 'dense', label: '每天', points: dense },
+        {
+          key: 'sparse',
+          label: '隔天',
+          points: [
+            { measured_at: '2026-11-01T08:00:00', value: 1 },
+            { measured_at: '2026-11-05T08:00:00', value: 5 },
+          ],
+        },
+      ],
+      { width: 600, height: 260 },
+    )
+
+    expect(layout.dates).toHaveLength(5)
+    expect(layout.series[1].points[0].x).toBeCloseTo(46)
+    expect(layout.series[1].points[1].x).toBeCloseTo(600 - 16)
+    // 中间那天在画布正中，说明空档没有被压缩成「相邻两点」
+    expect(layout.series[0].points[2].x).toBeCloseTo((46 + (600 - 16)) / 2)
+  })
+
+  it('输入乱序时按日期排好，路径的 x 单调递增', () => {
+    const layout = buildMultiChart(
+      [
+        {
+          key: 'a',
+          label: 'A',
+          points: [
+            { measured_at: '2026-11-03T08:00:00', value: 3 },
+            { measured_at: '2026-11-01T08:00:00', value: 1 },
+            { measured_at: '2026-11-02T08:00:00', value: 2 },
+          ],
+        },
+      ],
+      { width: 600, height: 260 },
+    )
+
+    const points = layout.series[0].points
+    expect(points.map((item) => item.date)).toEqual(['2026-11-01', '2026-11-02', '2026-11-03'])
+    expect(points[0].x).toBeLessThan(points[1].x)
+    expect(points[1].x).toBeLessThan(points[2].x)
+  })
+
+  it('同一天多次测量共用一个横坐标，不擅自挑一条', () => {
+    const layout = buildMultiChart(
+      [
+        {
+          key: 'a',
+          label: 'A',
+          points: [
+            { measured_at: '2026-11-01T08:00:00', value: 1 },
+            { measured_at: '2026-11-01T20:00:00', value: 2 },
+          ],
+        },
+      ],
+      { width: 600, height: 260 },
+    )
+
+    expect(layout.dates).toEqual(['2026-11-01'])
+    expect(layout.series[0].points).toHaveLength(2)
+    expect(layout.series[0].points[0].x).toBe(layout.series[0].points[1].x)
+    expect(layout.series[0].points[0].x).toBeCloseTo((46 + (600 - 16)) / 2)
+  })
+
+  it('全是无效值的序列不会把自己的日期带进共享横轴', () => {
+    const ok = series('ok', 'O', [1, 2])
+    const layout = buildMultiChart(
+      [
+        { key: 'bad', label: 'B', points: [{ measured_at: '2026-10-01T08:00:00', value: Number.NaN }] },
+        ok,
+      ],
+      { width: 600, height: 260 },
+    )
+
+    expect(layout.dates).toEqual(['2026-11-01', '2026-11-02'])
+    expect(layout.series[0].points[0].x).toBeCloseTo(46)
   })
 
   it('不同序列值域差异大时也能正常缩放（不假设同量纲）', () => {

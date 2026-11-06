@@ -684,7 +684,7 @@ CI 上一向是绿的、只要 25 秒，因为 `.env` 不入库、密钥为空�
 
 - **知识库**：从 8 篇扩到 14 篇，补血脂管理、糖尿病日常、心血管预防、减重实操、戒烟限酒、用药依从。都按「YAML 头 + `## ` 分节」与现有语料一致，检索器按 `## ` 切 chunk，每节自足。总 chunk 约 30 → 48。
 - **提醒时间闸**：`reminder_service.sync` 的「今日任务待完成」之前一天内任何时候都顶，早上六点会把「晚上十点睡前少屏幕」当待完成催。加 `_time_passed(scheduled_time, now)`，未到点不生成、到点才催，content 带上「（设定时间 xx:xx）」。`timeutil` 加 `business_now()`（东八区时刻）。坏格式时间退回「已到点」不卡链路。
-- **多维对比**：`chartGeometry.buildMultiChart` 支持多序列同图，Y 轴按全局 min/max 缩放、各序列独立铺横轴（不做日期对齐）。新增 `MultiTrendChart.vue`（多色 + 图例 + 悬停），`TrendsView` 加「对比」多选模式。
+- **多维对比**：`chartGeometry.buildMultiChart` 支持多序列同图，Y 轴按全局 min/max 缩放；新增 `MultiTrendChart.vue`（多色 + 图例 + 悬停），`TrendsView` 加「对比」多选模式。横轴 11-05 时是各序列独立铺满，11-06 已改为共享日期轴（见下）。
 - **报告导出 PDF**：`report_service.to_print_html` 渲染打印友好 HTML（内联样式、`@media print` 防分页断节、HTML 转义防注入），新增 `GET /reports/{id}/print`，前端「导出 PDF」按钮 fetch 后开新窗触发打印。保留原 Markdown 导出。
 
 ## 2026-11-06 侧边栏高度与导出/下载链路
@@ -695,6 +695,7 @@ CI 上一向是绿的、只要 25 秒，因为 `.env` 不入库、密钥为空�
 - **确认卡片**：`ChatView.spec.ts` 补 4 条（弹卡片、approve、reject、modify 反馈门槛）。`.glass-strong` 同时是外层 section 的类名，判断卡片消失要用文案断言。
 - **首屏读失败**：`ProfileView.load()` 裸 `Promise.all`、`PlansView.load()` 只有 `try/finally`，任一路挂掉都变成没人处理的 rejection + 一片空状态。两处补 `catch` 弹后端 `message`；附加信息（急救事件、打卡总结）继续静默降级。新增 `ProfileView.spec.ts` 4 条、`PlansView.spec.ts` 5 条，计划页用真实 memory router 注入而不是 mock `vue-router`（模板里 `$router.push` 要用）。变异把两处 `toast.error` 换成 `void error`，恰好 4 条失败用例挂。前端 167 → 176 项。
 - **评估页补齐**：`AssessmentView.load()` 同款 `try/finally` 缺 `catch`，读失败落到「还没有可用的评估」误导性空状态，补提示。新增 `AssessmentView.spec.ts` 6 条（首屏两路、两路各自失败、真空态、历史详情成功/已清理），变异两轮分别挂 2 条与 1 条。前端 176 → 182 项，主视图渲染层用例补齐。
+- **趋势图日期对齐**：推翻 11-05「不做日期对齐」的取舍。原来各序列按点数独立铺满，点数不等时同一天的测量会错开半张图。改为共享日期轴（所有序列日期并集、归一到天），缺测不插值、同日多次测量共用 x、刻度从共享轴生成、几何层自己按时间排序。`ChartPointLayout` 加 `date`，提示框列出该天所有序列的实测值并把同日点一起高亮。前端 182 → 191 项，三轮变异分别挂 4/2/1 条。跨量纲 Y 轴取舍不变。
 
 ## 已知取舍
 
@@ -717,11 +718,11 @@ CI 上一向是绿的、只要 25 秒，因为 `.env` 不入库、密钥为空�
 7. `~/.docker/daemon.json` 里加的 `registry-mirrors` 已被 Docker Desktop 覆盖回默认，现在文件里只剩 `builder` 与 `experimental`，`docker info` 没有 Mirrors 项。镜像是本地构建，拉取不受影响，换机部署前要在 Docker Desktop 设置里重新加。
 8. 资料解析的规则按常见检验单写法覆盖，手头没有真实报告样本。真实排版的字段名变体、跨页表格、竖排文字都还没验过，拿到样本后要补规则与用例。
 9. 容器实库上跑 `alembic check` 会报 LangGraph checkpointer 的四张表（`checkpoints`、`checkpoint_writes`、`checkpoint_blobs`、`checkpoint_migrations`）是「待删除」，因为这几张表由 checkpointer 自己建、不在模型里。这是噪音，不是漏迁移。空库上跑 check 才是可比对的信号。
-10. 前端测试覆盖 `api/client.ts`、`api/stream.ts`、`stores/reminders.ts`、`views/planLogic.ts`、`views/profileLogic.ts`、`utils/*`（datetime、today、keyboard、redirect、sse、abort、nav、download）、`components/chartGeometry.ts`，外加 `TrendChart`（RT-01~06）、`ChatView`（CV-01~10，含确认卡片三条分支）、`MultiTrendChart`（6 条）、`ProfileView`（4 条）、`PlansView`（5 条）、`AssessmentView`（6 条）六组渲染用例。评估页的 `load()` 之前也只有 `try/finally`，读失败会落到「还没有可用的评估」误导性空状态，已补 `catch`。主视图现在都有渲染层用例，但仍没配覆盖率阈值：判定与请求体拼装已抽成纯函数覆盖，剩下的是模板与事件接线。接口形状由 `tests/contract/test_frontend_types.py` 承担。
+10. 前端测试覆盖 `api/client.ts`、`api/stream.ts`、`stores/reminders.ts`、`views/planLogic.ts`、`views/profileLogic.ts`、`utils/*`（datetime、today、keyboard、redirect、sse、abort、nav、download）、`components/chartGeometry.ts`，外加 `TrendChart`（RT-01~06）、`ChatView`（CV-01~10，含确认卡片三条分支）、`MultiTrendChart`（10 条）、`ProfileView`（4 条）、`PlansView`（5 条）、`AssessmentView`（6 条）六组渲染用例。评估页的 `load()` 之前也只有 `try/finally`，读失败会落到「还没有可用的评估」误导性空状态，已补 `catch`。主视图现在都有渲染层用例，但仍没配覆盖率阈值：判定与请求体拼装已抽成纯函数覆盖，剩下的是模板与事件接线。接口形状由 `tests/contract/test_frontend_types.py` 承担。
 11. 业务日期固定在东八区（`BUSINESS_TZ`），非东八区用户看到的「今天」会是东八区的今天。急救电话默认 120、文案中文，这个假设与产品定位一致；真要支持其他时区得把偏移做成配置项。
 12. 会话过期是「事后发现」：刷新由请求驱动，用户空闲着令牌过期不会主动续，要等下一次请求拿到 401 才跳转。`LoginView` 的回跳只接受站内绝对路径，底层仍靠 `router.push()` 的兜底重定向，不是唯一防线。
 13. 前后端字段一致性比字段名、可空性与类型宽度（`NC`/`TC`），但不比类型**细节**：`string` 与字面量联合、`number[]` 与元素类型都算一类，元素层不再往下钻。请求体（`ProfilePatchBody`）方向相反，验「前端可能发的类型后端接得住」。嵌套结构（`ReportDetail.content`、`Recommendation`）与 `NO_MODEL` 里那些 service 拼的 dict 依旧没模型可对，只靠运行时取键。泛型接口（`ApiEnvelope<T>`、`PageData<T>`）解析时跳过。
-14. 趋势图已无 echarts，改手写 SVG（`chartGeometry.ts` + `TrendChart.vue`）。代价是没有动画、缩放与多序列叠加，真需要第二条线得自己扩几何层。平滑用单调三次贝塞尔，代价是曲线比 Catmull-Rom 略「硬」——换来的是不会凭空鼓出没测到过的峰。体积已有自动化度量（`npm run size`，BG-01~03），只量 gzip 不量执行时间。
+14. 趋势图已无 echarts，改手写 SVG（`chartGeometry.ts` + `TrendChart.vue`/`MultiTrendChart.vue`）。代价是没有动画与缩放。单序列按点数铺横轴；多序列自 2026-11-06 起按**共享日期轴**定位：日期取所有序列并集（归一到天），缺测日期不补点不插值，同日多次测量共用一个 x，横轴刻度也从共享轴生成。跨量纲时 Y 轴仍是全局 min/max，高低只作参考。平滑用单调三次贝塞尔，代价是曲线比 Catmull-Rom 略「硬」——换来的是不会凭空鼓出没测到过的峰。体积已有自动化度量（`npm run size`，BG-01~03），只量 gzip 不量执行时间。
 15. 流式请求只对 401 重放，其他错误（500、网络断）不重试：健康咨询是长耗时请求，自动重试有重复生成回复的风险。时间上限三层：前端空闲 45 秒、前端总时长 180 秒（靠 abort 打断 fetch，连「等响应头」阶段一起管住）、后端工作流按运行类型分档（评估/调整计划长链 `WORKFLOW_TIMEOUT_LONG` 默认 150，咨询/打卡/查报告短链 `WORKFLOW_TIMEOUT_SHORT` 默认 60，先于前端收口把 run 标成 failed）。都是硬上限，真需要更久的长咨询会被截断。流结束时若最后一帧没有空行收尾仍会被丢掉，当前后端每条事件都带 `\n\n`，实际不触发。
 16. 离开聊天页会 abort 在跑的流，已收到的 token 保留在气泡里，不会补全成完整回复；后台也没有断点续流，回来只能重新发一次。`controller` 是模块级单例，同一时刻只允许一条流，重发会掐掉上一条——这是有意的，否则晚到的 token 会拼进新消息。
 17. 测试永远拿不到模型：`conftest.py` 把 `LLM_API_KEY` 清空。想用真实模型验一遍聊天链路，得手动注释掉那一行再单独跑用例（或直接在浏览器里跑端到端）。这样换来的是测试与 CI 完全一致、不花钱、不随模型输出飘。

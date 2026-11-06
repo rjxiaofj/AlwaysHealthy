@@ -22,6 +22,8 @@ export interface ChartPointLayout {
   y: number
   value: number
   label: string
+  /** 归一到「天」的日期键，多序列对比时用来把同一天的点归到一起 */
+  date: string
 }
 
 export interface ChartSeriesLayout {
@@ -57,7 +59,7 @@ export interface ChartLayout {
   xTicks: ChartTick[]
 }
 
-/** 多序列对比布局。Y 轴按所有序列的全局 min/max 统一缩放，各序列独立铺满横轴。 */
+/** 多序列对比布局。Y 轴按所有序列的全局 min/max 统一缩放，横轴是各序列日期的并集。 */
 export interface MultiChartLayout {
   width: number
   height: number
@@ -65,6 +67,8 @@ export interface MultiChartLayout {
   baseline: number
   yTicks: ChartYAxisTick[]
   xTicks: ChartTick[]
+  /** 共享横轴上的日期（YYYY-MM-DD，升序），每个点在 axis 上的位置由它决定 */
+  dates: string[]
 }
 
 const PADDING = { left: 46, right: 16, top: 16, bottom: 30 }
@@ -123,6 +127,11 @@ export function niceDomain(min: number, max: number): { min: number; max: number
 export function formatTick(value: number, step: number): string {
   const decimals = step >= 1 ? 0 : step >= 0.1 ? 1 : 2
   return value.toFixed(decimals)
+}
+
+/** 只按「天」对齐：同一天不同时刻的多次测量共用一个横坐标，跟横轴刻度 11-05 一致 */
+function dateKey(measuredAt: string): string {
+  return measuredAt.slice(0, 10)
 }
 
 /** `2026-11-05T08:00:00` → `11-05`，跟前端别处一致 */
@@ -251,6 +260,7 @@ export function buildChart(
     y: round(toY(item.value)),
     value: item.value,
     label: formatDay(item.measured_at),
+    date: dateKey(item.measured_at),
   }))
 
   const line = smoothPath(laidOut)
@@ -289,8 +299,12 @@ export function nearestIndex(points: readonly { x: number }[], targetX: number):
  *
  * 跟单序列不同：这里各条线的值域可能差很远（收缩压 130 vs 体重 75），所以 Y 轴按
  * 所有序列的全局 min/max 统一缩放——这样同量纲的「收缩压 vs 舒张压」能直接看谁高谁
- * 低、趋势是否同步。横轴各序列独立铺满，不做日期对齐：多指标通常同时测，点数接近，
- * 对齐的复杂度不值当；点数不同时仍能比趋势方向。
+ * 低、趋势是否同步。
+ *
+ * 横轴是所有序列测量日期的并集，按日期定位而不是按点数铺满：两条线同一天的测量必须
+ * 落在同一条竖线上，否则「11-03 血压升高时体重是不是也涨了」这类对比就是错的。缺失
+ * 日期不补点也不插值，只让相邻两点之间的横向距离反映真实的日期差；同一天测了多次就
+ * 共用一个 x，垂直叠着画，不擅自挑一条。
  */
 export function buildMultiChart(
   seriesInput: readonly ChartSeriesInput[],
@@ -298,7 +312,7 @@ export function buildMultiChart(
 ): MultiChartLayout {
   const width = Math.max(0, size.width)
   const height = Math.max(0, size.height)
-  const empty: MultiChartLayout = { width, height, series: [], baseline: 0, yTicks: [], xTicks: [] }
+  const empty: MultiChartLayout = { width, height, series: [], baseline: 0, yTicks: [], xTicks: [], dates: [] }
 
   const series = seriesInput
     .map((item) => ({
@@ -324,20 +338,36 @@ export function buildMultiChart(
   const span = domain.max - domain.min || 1
   const toY = (value: number) => plotBottom - ((value - domain.min) / span) * plotHeight
 
+  // 只按「天」对齐：同一天不同时刻的多次测量共用一个横坐标，跟横轴刻度 11-05 一致
+  const dates = [...new Set(series.flatMap((item) => item.points.map((point) => dateKey(point.measured_at))))].sort()
+  const positions = new Map(dates.map((date, index) => [date, index]))
+  const toX = (date: string): number => {
+    if (dates.length === 1) return round(plotLeft + plotWidth / 2)
+    const index = positions.get(date) ?? 0
+    return round(plotLeft + (index * plotWidth) / (dates.length - 1))
+  }
+
   const laidOut = series.map((item) => {
-    const count = item.points.length
-    const step = count === 1 ? 0 : plotWidth / (count - 1)
-    const points: ChartPointLayout[] = item.points.map((point, index) => ({
-      x: count === 1 ? plotLeft + plotWidth / 2 : round(plotLeft + index * step),
+    // 后端一般按时间升序返回，但几何层不依赖这个：路径要求 x 单调递增，先自己排一遍
+    const ordered = [...item.points].sort((left, right) => left.measured_at.localeCompare(right.measured_at))
+    const points: ChartPointLayout[] = ordered.map((point) => ({
+      x: toX(dateKey(point.measured_at)),
       y: round(toY(point.value)),
       value: point.value,
       label: formatDay(point.measured_at),
+      date: dateKey(point.measured_at),
     }))
     return { key: item.key, label: item.label, points, line: smoothPath(points), area: '' }
   })
 
-  // 横轴刻度用点数最多的那条序列，避免因某条序列点太少而空出大半截
-  const densest = laidOut.reduce((best, item) => (item.points.length > best.points.length ? item : best), laidOut[0])
+  // 横轴刻度来自共享日期轴，不再取「点数最多的序列」——那条序列可能恰好漏了中间几天
+  const axisPoints: ChartPointLayout[] = dates.map((date) => ({
+    x: toX(date),
+    y: 0,
+    value: 0,
+    label: formatDay(date),
+    date,
+  }))
 
   return {
     width,
@@ -345,6 +375,7 @@ export function buildMultiChart(
     series: laidOut,
     baseline: round(plotBottom),
     yTicks: domain.ticks.map((value) => ({ y: round(toY(value)), text: formatTick(value, domain.step) })),
-    xTicks: buildXTicks(densest.points, plotWidth),
+    xTicks: buildXTicks(axisPoints, plotWidth),
+    dates,
   }
 }

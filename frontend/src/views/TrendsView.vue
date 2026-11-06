@@ -212,7 +212,7 @@ onMounted(load)
             description="点上面的指标标签勾选两个以上，就能在同一张图上对比它们的趋势"
           />
           <p v-if="comparedSeries.length > 1" class="mt-2 text-[11px]" :style="{ color: 'var(--color-text-tertiary)' }">
-            同一张图里纵轴按所有选中指标的全局范围统一缩放，量纲不同的指标对比高低只作参考。
+            横轴按测量日期对齐，同一天的测量落在同一条竖线上；没测的日期不补点。纵轴按所有选中指标的全局范围统一缩放，量纲不同的指标对比高低只作参考。
           </p>
         </div>
         <template v-else>
