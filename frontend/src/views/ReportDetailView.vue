@@ -36,24 +36,27 @@ async function download() {
 
 async function printPdf() {
   if (!report.value) return
+  // 先同步开窗拿引用：浏览器只在用户手势的同步调用栈里放行 window.open，
+  // 放到 fetch 之后（异步回调里）会被弹窗拦截器挡住
+  const win = window.open('', '_blank')
+  if (!win) {
+    toast.error('浏览器拦截了新窗口，请允许弹出窗口后重试')
+    return
+  }
   try {
-    // print 端点需要登录态，先 fetch 拿到打印友好的 HTML，再开新窗口触发打印
+    // print 端点需要登录态，先 fetch 拿到打印友好的 HTML 再写进新窗口
     const response = await fetch(reportApi.printUrl(report.value.id), {
       headers: { Authorization: `Bearer ${tokens.access}` },
     })
     if (!response.ok) throw new Error('导出失败')
     const html = await response.text()
-    const win = window.open('', '_blank')
-    if (!win) {
-      toast.error('浏览器拦截了新窗口，请允许弹出窗口后重试')
-      return
-    }
     win.document.write(html)
     win.document.close()
-    // document.write 是同步的，close 时文档已经就绪；这里再去 addEventListener('load')
-    // 会永远收不到事件（load 早触发过了），导致 print 不执行。写完直接触发打印即可。
+    // document.write 是同步的，close 时文档已就绪；再监听 load 收不到事件。
+    // 写完直接触发打印即可，等 300ms 让样式先应用
     setTimeout(() => win.print(), 300)
   } catch (error) {
+    win.close()
     toast.error(error instanceof Error ? error.message : '导出失败')
   }
 }
