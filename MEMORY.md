@@ -766,6 +766,7 @@ CI 上一向是绿的、只要 25 秒，因为 `.env` 不入库、密钥为空�
 - 硬删除靠 `window.prompt` 输入用户名二次确认；角色变更靠 `window.confirm`。前端改侧边栏五菜单、九路接口 `Promise.allSettled` 各自降级。
 - 后端 348、前端 221 全绿。**顺手修了既有时间敏感假红**：`test_features.py` NH-07 跨天凌晨会因任务未到点不生成提醒，补 `_freeze_to_late_evening` autouse fixture 钉 business_now 到 23:59。
 - 关键取舍：llm_api_key 明文回显（用户要求，安全上建议改只写不回显）；bge 切换不预检依赖；硬删不可恢复；runtime_config 单机成立多实例不共享；Agent loaded 是进程级布尔不是每个 agent 独立状态。
+- 变异验证收口（5/5 被捕获）：M1 停用护栏删整块 `if target.id == actor.id`、M2 硬删 confirm 校验、M3 runtime 白名单（直接测 `set_and_persist` 抛 `ValueError`，不能只走 HTTP 层被 pydantic extra 兜掉）、M4 keyword 过滤（独立前缀造可区分数据）、M5 前端删除二次确认。后端 350 passed、前端 221 passed，提交 `d220262`，CI `42252224017` success。
 
 ## 已知取舍
 
