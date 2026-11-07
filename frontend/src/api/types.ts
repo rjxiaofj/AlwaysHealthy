@@ -65,6 +65,32 @@ export interface AdminOverview {
   new_users_today: number
 }
 
+/** 看板里的一个分桶：key 给程序用，label 直接显示 */
+export interface AnalyticsBucket {
+  key: string
+  label: string
+  value: number
+}
+
+/** 看板折线上的一个点 */
+export interface AnalyticsDay {
+  date: string
+  count: number
+}
+
+/** GET /api/v1/admin/analytics，管理后台可视化数据 */
+export interface AdminAnalytics {
+  range: { start: string; end: string; days: number }
+  users_by_role: AnalyticsBucket[]
+  users_by_status: AnalyticsBucket[]
+  new_users_trend: AnalyticsDay[]
+  login_fail_trend: AnalyticsDay[]
+  audit_top_actions: { action: string; count: number }[]
+  incidents_by_severity: AnalyticsBucket[]
+  workflow: AnalyticsBucket[]
+  totals: { new_users: number; login_fails: number }
+}
+
 /** GET /api/v1/admin/audit-logs 的单条审计记录 */
 export interface AuditLog {
   id: string

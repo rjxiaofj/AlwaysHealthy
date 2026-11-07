@@ -150,6 +150,9 @@ NO_MODEL: dict[str, str] = {
     "AgentStatus": "admin_service.agent_status 拼 dict，运行时见 test_admin_agent_keys",
     "AdminOverview": "admin_repo.overview_counts 拼 dict，运行时见 test_admin_overview_keys",
     "AuditLog": "admin_service._audit_dict 拼 dict，运行时见 test_admin_audit_keys",
+    "AdminAnalytics": "admin_service.analytics 拼 dict，运行时见 test_admin_analytics_keys",
+    "AnalyticsBucket": "AdminAnalytics 的分桶内部结构，后端 _LEVEL_LABELS 等映射拼 dict",
+    "AnalyticsDay": "AdminAnalytics 折线上的点，后端 _count_by_day 拼 dict",
 }
 
 
@@ -563,6 +566,22 @@ async def test_admin_overview_keys(client, auth, session):
     response = await client.get("/api/v1/admin/overview", headers=auth)
     assert response.status_code == 200
     assert _missing(response.json()["data"], "AdminOverview") == []
+
+
+@pytest.mark.asyncio
+async def test_admin_analytics_keys(client, auth, session):
+    """看板数据是拼出来的嵌套结构，静态比不了，这里对真实响应逐层取键。"""
+    await _make_admin(session, auth["username"])
+    response = await client.get("/api/v1/admin/analytics", headers=auth)
+    assert response.status_code == 200
+    data = response.json()["data"]
+
+    assert _missing(data, "AdminAnalytics") == []
+    # 分桶与折线点这两种嵌套结构必须各有一份，否则前端画不出来
+    assert data["users_by_role"], "角色分桶为空，AdminAnalytics.users_by_role 没被覆盖"
+    assert _missing(data["users_by_role"][0], "AnalyticsBucket") == []
+    assert data["new_users_trend"], "折线点为空，AdminAnalytics.new_users_trend 没被覆盖"
+    assert _missing(data["new_users_trend"][0], "AnalyticsDay") == []
 
 
 @pytest.mark.asyncio

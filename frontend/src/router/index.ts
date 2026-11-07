@@ -24,12 +24,23 @@ const router = createRouter({
         { path: 'profile', name: 'profile', component: () => import('@/views/ProfileView.vue') },
         { path: 'reminders', name: 'reminders', component: () => import('@/views/RemindersView.vue') },
         { path: 'reports/:id', name: 'report', component: () => import('@/views/ReportDetailView.vue') },
-        {
-          path: 'admin',
-          name: 'admin',
-          component: () => import('@/views/AdminView.vue'),
-          meta: { requiresAdmin: true },
-        },
+      ],
+    },
+    {
+      // 管理后台走独立外壳 AdminLayout，不挂在 AppLayout 下：
+      // 挂进去就会带出用户端侧边栏（健康首页、智能助手、待办提醒），
+      // 管理员在后台看到的应该是管理菜单，而不是自己的健康入口。
+      path: '/admin',
+      component: () => import('@/layouts/AdminLayout.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true },
+      children: [
+        { path: '', redirect: '/admin/overview' },
+        { path: 'overview', name: 'admin-overview', component: () => import('@/views/AdminView.vue'), meta: { panel: 'overview' } },
+        { path: 'analytics', name: 'admin-analytics', component: () => import('@/views/AdminView.vue'), meta: { panel: 'analytics' } },
+        { path: 'accounts', name: 'admin-accounts', component: () => import('@/views/AdminView.vue'), meta: { panel: 'accounts' } },
+        { path: 'audit', name: 'admin-audit', component: () => import('@/views/AdminView.vue'), meta: { panel: 'audit' } },
+        { path: 'incidents', name: 'admin-incidents', component: () => import('@/views/AdminView.vue'), meta: { panel: 'incidents' } },
+        { path: 'runtime', name: 'admin-runtime', component: () => import('@/views/AdminView.vue'), meta: { panel: 'runtime' } },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },

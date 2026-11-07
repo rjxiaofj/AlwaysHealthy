@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 
 import { adminApi } from '@/api'
 import type {
   AccountRole,
+  AdminAnalytics,
   AdminOverview,
   AdminUser,
   AgentStatus,
@@ -12,29 +14,28 @@ import type {
   SecurityIncident,
   ServiceStatus,
 } from '@/api/types'
+import AdminBarChart from '@/components/AdminBarChart.vue'
+import AdminTrendChart from '@/components/AdminTrendChart.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 
 const toast = useToastStore()
 const auth = useAuthStore()
+const route = useRoute()
 
-type MenuKey = 'overview' | 'accounts' | 'audit' | 'incidents' | 'runtime'
+type MenuKey = 'overview' | 'analytics' | 'accounts' | 'audit' | 'incidents' | 'runtime'
 
-const menu: { key: MenuKey; label: string }[] = [
-  { key: 'overview', label: '总览' },
-  { key: 'accounts', label: '账号' },
-  { key: 'audit', label: '审计' },
-  { key: 'incidents', label: '安全事件' },
-  { key: 'runtime', label: '模型与 Agent' },
-]
-
-const active = ref<MenuKey>('overview')
+// 侧边栏在 AdminLayout，这里只按路由决定画哪块内容：
+// 一个组件对应 6 个路由，URL 换一下就切面板，刷新和直达链接都能用
+const active = computed<MenuKey>(() => (route.meta.panel as MenuKey) ?? 'overview')
 
 const services = ref<ServiceStatus | null>(null)
 const servicesFailed = ref(false)
 const overview = ref<AdminOverview | null>(null)
 const overviewFailed = ref(false)
+const analytics = ref<AdminAnalytics | null>(null)
+const analyticsFailed = ref(false)
 const users = ref<AdminUser[]>([])
 const total = ref(0)
 const page = ref(1)
@@ -66,6 +67,32 @@ const selfId = computed(() => auth.user?.id ?? null)
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 const auditPageCount = computed(() => Math.max(1, Math.ceil(auditTotal.value / pageSize)))
 
+// 看板两条折线绑同一张图：一条新增账号、一条登录失败。
+// 颜色走 CSS 变量，深色主题跟着变，不用在脚本里判断 mode
+const trendSeries = computed(() => {
+  const data = analytics.value
+  if (!data) return []
+  return [
+    { name: '新增账号', color: 'var(--color-info)', points: data.new_users_trend },
+    { name: '登录失败', color: 'var(--color-danger)', points: data.login_fail_trend },
+  ]
+})
+
+const auditActionItems = computed(() =>
+  (analytics.value?.audit_top_actions ?? []).map((item) => ({ label: item.action, value: item.count })),
+)
+
+const PANEL_TITLES: Record<MenuKey, string> = {
+  overview: '总览',
+  analytics: '数据看板',
+  accounts: '账号与角色',
+  audit: '审计日志',
+  incidents: '安全事件',
+  runtime: '模型与 Agent',
+}
+
+const panelTitle = computed(() => PANEL_TITLES[active.value])
+
 const serviceRows = computed(() => {
   const data = services.value
   if (!data) return []
@@ -86,6 +113,7 @@ async function loadActive() {
   const results = await Promise.allSettled([
     adminApi.services(),
     adminApi.overview(),
+    adminApi.analytics(),
     adminApi.users(page.value, pageSize, {
       keyword: keyword.value || undefined,
       role: roleFilter.value || undefined,
@@ -99,12 +127,14 @@ async function loadActive() {
     adminApi.knowledge(),
   ])
 
-  const [svc, ov, us, au, inc, rt, ag, ws, kn] = results
+  const [svc, ov, an, us, au, inc, rt, ag, ws, kn] = results
   const failures: string[] = []
   if (svc.status === 'fulfilled') services.value = svc.value
   else { servicesFailed.value = true; failures.push(msg(svc.reason)) }
   if (ov.status === 'fulfilled') overview.value = ov.value
   else { overviewFailed.value = true; failures.push(msg(ov.reason)) }
+  if (an.status === 'fulfilled') analytics.value = an.value
+  else { analyticsFailed.value = true; failures.push(msg(an.reason)) }
   if (us.status === 'fulfilled') { users.value = us.value.items; total.value = us.value.total }
   else { usersFailed.value = true; failures.push(msg(us.reason)) }
   if (au.status === 'fulfilled') { audits.value = au.value.items; auditTotal.value = au.value.total }
@@ -118,11 +148,6 @@ async function loadActive() {
   if (kn.status === 'fulfilled') knowledge.value = kn.value
   if (failures.length) toast.error(failures[0])
   loading.value = false
-}
-
-function switchMenu(key: MenuKey) {
-  if (active.value === key) return
-  active.value = key
 }
 
 function goPage(next: number) {
@@ -245,25 +270,11 @@ function severityClass(value: string | null): string {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4 lg:flex-row lg:items-start">
-    <aside class="glass card-pad flex shrink-0 flex-row flex-wrap gap-2 lg:w-[200px] lg:flex-col lg:gap-1">
-      <button
-        v-for="item in menu"
-        :key="item.key"
-        type="button"
-        class="rounded-xl px-3 py-2 text-left text-[13px]"
-        :class="active === item.key ? 'segment-item is-active' : ''"
-        :style="active !== item.key ? { color: 'var(--color-text-secondary)' } : {}"
-        @click="switchMenu(item.key)"
-      >
-        {{ item.label }}
-      </button>
-    </aside>
-
+  <div class="flex min-w-0 flex-col gap-4">
     <div class="flex min-w-0 flex-1 flex-col gap-4">
       <section class="glass card-pad flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 class="text-[20px] font-semibold">管理后台</h1>
+          <h1 class="text-[20px] font-semibold">{{ panelTitle }}</h1>
           <p class="mt-1 text-[12px]" :style="{ color: 'var(--color-text-secondary)' }">
             账号、审计、安全事件与运行状态。管理员不查看任何人的健康档案、评估或计划。
           </p>
@@ -316,6 +327,75 @@ function severityClass(value: string | null): string {
           </div>
           <EmptyState v-else title="服务状态读取失败" description="请稍后点「刷新」重试" />
         </section>
+      </template>
+
+      <!-- 数据看板 -->
+      <template v-else-if="active === 'analytics'">
+        <template v-if="analytics">
+          <section class="glass card-pad">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h2 class="text-[15px] font-semibold">近 {{ analytics.range.days }} 天趋势</h2>
+              <span class="chip">{{ analytics.range.start }} 至 {{ analytics.range.end }}</span>
+            </div>
+            <div class="mt-4 grid gap-3 sm:grid-cols-2">
+              <div class="rounded-2xl px-4 py-3" :style="{ background: 'var(--color-bg-secondary)' }">
+                <div class="text-[12px]" :style="{ color: 'var(--color-text-secondary)' }">新增账号</div>
+                <div class="mt-1 text-[20px] font-semibold">{{ analytics.totals.new_users }}</div>
+              </div>
+              <div class="rounded-2xl px-4 py-3" :style="{ background: 'var(--color-bg-secondary)' }">
+                <div class="text-[12px]" :style="{ color: 'var(--color-text-secondary)' }">登录失败</div>
+                <div class="mt-1 text-[20px] font-semibold" :style="{ color: 'var(--color-danger)' }">
+                  {{ analytics.totals.login_fails }}
+                </div>
+              </div>
+            </div>
+            <div class="mt-5">
+              <AdminTrendChart :series="trendSeries" />
+            </div>
+          </section>
+
+          <div class="grid gap-4 lg:grid-cols-2">
+            <section class="glass card-pad">
+              <h2 class="text-[15px] font-semibold">账号角色分布</h2>
+              <div class="mt-4">
+                <AdminBarChart :items="analytics.users_by_role" empty-text="还没有账号" />
+              </div>
+            </section>
+
+            <section class="glass card-pad">
+              <h2 class="text-[15px] font-semibold">账号状态</h2>
+              <div class="mt-4">
+                <AdminBarChart :items="analytics.users_by_status" empty-text="还没有账号" />
+              </div>
+            </section>
+
+            <section class="glass card-pad">
+              <h2 class="text-[15px] font-semibold">审计动作 Top {{ analytics.audit_top_actions.length }}</h2>
+              <div class="mt-4">
+                <AdminBarChart :items="auditActionItems" empty-text="还没有审计记录" />
+              </div>
+            </section>
+
+            <section class="glass card-pad">
+              <h2 class="text-[15px] font-semibold">安全事件分级</h2>
+              <div class="mt-4">
+                <AdminBarChart :items="analytics.incidents_by_severity" empty-text="没有安全事件" />
+              </div>
+            </section>
+
+            <section class="glass card-pad lg:col-span-2">
+              <h2 class="text-[15px] font-semibold">工作流运行状态</h2>
+              <div class="mt-4">
+                <AdminBarChart :items="analytics.workflow" empty-text="还没有工作流记录" />
+              </div>
+            </section>
+          </div>
+        </template>
+        <EmptyState
+          v-else
+          :title="analyticsFailed ? '看板读取失败' : '暂无数据'"
+          :description="analyticsFailed ? '请稍后点「刷新」重试' : ''"
+        />
       </template>
 
       <!-- 账号 -->

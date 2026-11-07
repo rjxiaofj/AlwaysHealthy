@@ -1,6 +1,7 @@
 import { api } from './client'
 import type {
   AccountRole,
+  AdminAnalytics,
   AdminOverview,
   AdminUser,
   AgentStatus,
@@ -68,6 +69,7 @@ export const adminApi = {
   deleteUser: (id: string, confirmUsername: string) =>
     api<null>(`/admin/users/${id}`, { method: 'DELETE', params: { confirm_username: confirmUsername } }),
   overview: () => api<AdminOverview>('/admin/overview'),
+  analytics: () => api<AdminAnalytics>('/admin/analytics'),
   audits: (page = 1, pageSize = 20, filters?: { action?: string; actor_user_id?: string; result?: string }) =>
     api<PageData<AuditLog>>('/admin/audit-logs', {
       params: { page, page_size: pageSize, ...filters },

@@ -224,6 +224,77 @@ async def overview(session: AsyncSession) -> dict:
     return await admin_repo.overview_counts(session, day_start_utc)
 
 
+# 可视化看板的时间窗口。7 天足够看出「昨天开始有人注册」这类变化，
+# 又不会把横轴挤成一堆点
+ANALYTICS_DAYS = 7
+
+_ROLE_LABELS = {"admin": "管理员", "user": "普通用户"}
+_STATUS_LABELS = {"active": "启用", "disabled": "停用"}
+_LEVEL_LABELS = {"critical": "严重", "high": "高", "medium": "中", "low": "低", "unknown": "未分级"}
+_WORKFLOW_LABELS = {
+    "running": "运行中",
+    "waiting_user": "等待确认",
+    "cancelled": "已取消",
+    "failed": "失败",
+    "completed": "已完成",
+}
+
+
+def _count_by_day(times, days) -> list[dict]:
+    """把时间戳按业务时区归到天。缺的那天补 0，否则折线的 x 轴会跳日。"""
+    bucket = {day: 0 for day in days}
+    for value in times:
+        if value is None:
+            continue
+        day = as_utc(value).astimezone(BUSINESS_TZ).date()
+        if day in bucket:
+            bucket[day] += 1
+    return [{"date": day.isoformat(), "count": bucket[day]} for day in days]
+
+
+async def analytics(session: AsyncSession) -> dict:
+    now = as_utc(datetime.now(UTC))
+    today = now.astimezone(BUSINESS_TZ).date()
+    start = today - timedelta(days=ANALYTICS_DAYS - 1)
+    since = datetime.combine(start, dtime.min, tzinfo=BUSINESS_TZ).astimezone(UTC)
+    raw = await admin_repo.analytics_counts(session, since)
+    days = [start + timedelta(days=offset) for offset in range(ANALYTICS_DAYS)]
+
+    new_users = _count_by_day(raw["new_user_times"], days)
+    login_fails = _count_by_day(raw["login_fail_times"], days)
+
+    return {
+        "range": {
+            "start": days[0].isoformat(),
+            "end": days[-1].isoformat(),
+            "days": ANALYTICS_DAYS,
+        },
+        "users_by_role": [
+            {"key": key, "label": _ROLE_LABELS.get(key, key), "value": value}
+            for key, value in sorted(raw["by_role"].items())
+        ],
+        "users_by_status": [
+            {"key": key, "label": _STATUS_LABELS.get(key, key), "value": value}
+            for key, value in sorted(raw["by_status"].items())
+        ],
+        "new_users_trend": new_users,
+        "login_fail_trend": login_fails,
+        "audit_top_actions": raw["top_actions"],
+        "incidents_by_severity": [
+            {"key": key, "label": _LEVEL_LABELS.get(key, key), "value": value}
+            for key, value in sorted(raw["by_severity"].items())
+        ],
+        "workflow": [
+            {"key": key, "label": _WORKFLOW_LABELS.get(key, key), "value": value}
+            for key, value in sorted(raw["workflow"].items())
+        ],
+        "totals": {
+            "new_users": sum(item["count"] for item in new_users),
+            "login_fails": sum(item["count"] for item in login_fails),
+        },
+    }
+
+
 async def resolve_incident(
     session: AsyncSession,
     *,

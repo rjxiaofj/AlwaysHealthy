@@ -7,7 +7,9 @@
 
 基于 LangGraph 的智能健康评估与管理平台，毕业设计交付物，Docker Compose 本地单机运行，只绑 localhost。
 
-交付物包含一套后台管理系统（前端 `/admin`），不是可选的附加页面：管理员要能在不碰数据库的前提下完成账号与角色管理、登录安全事件处置、服务状态巡检。它走独立的管理员身份通道，管理的是账号与安全，不得成为健康数据的导出入口。能力清单、禁止项与验收口径见 `docs/rules/admin-console.md`，与本文同为硬约束。
+交付物包含一套后台管理系统（前端 `/admin`），不是可选的附加页面：管理员要能在不碰数据库的前提下完成账号与角色管理、登录安全事件处置、服务状态巡检，并看到平台的可视化数据。它走独立的管理员身份通道，管理的是账号与安全，不得成为健康数据的导出入口。能力清单、禁止项与验收口径见 `docs/rules/admin-console.md`，与本文同为硬约束。
+
+后台前端是独立外壳，不复用用户端布局：`/admin` 不挂在 `AppLayout` 下，侧边栏只放管理菜单。健康首页、智能助手、待办提醒这些用户端入口不得出现在后台，管理员的个人健康入口只在前台。后台必须有图表（7 日趋势 + 分布统计），只有数字表格不算完成。
 
 产品边界写死在代码里，不是文案问题：
 
@@ -55,6 +57,7 @@
 | 启动配置 | `app/core/config.py` | prod 用默认密钥启动等于谁都能签出合法令牌 |
 | 后台管理接口 | `app/api/deps.py::admin_user`、`app/api/v1/endpoints/admin.py`、`app/api/v1/endpoints/security.py` | 少一次角色判断或多返回一个字段，等于把全站账号开出去 |
 | 运行时配置 | `app/core/config.py`、后台模型参数改接口 | 在线改 llm 参数并热生效，改错会停掉整条咨询链路；密钥回显有泄露面 |
+| 后台外壳与菜单 | `src/layouts/AdminLayout.vue`、`src/router/index.ts` | `/admin` 挂回 `AppLayout` 就会把用户端侧边栏带进后台；路由守卫放松等于普通账号能进 |
 
 ## 4. 数据规则
 
@@ -77,7 +80,8 @@
 ## 5. 接口调用约束
 
 - 所有业务接口前缀 `/api/v1`，健康检查在 `/health/*`。
-- 新增管理接口统一挂 `/api/v1/admin/*` 并依赖 `admin_user`；已有的 `/health/services`（根路径）与 `/security/incidents` 是历史路径，保留但同样必须依赖 `admin_user`。管理接口只返回账号元数据与安全事件，不含任何健康业务字段。
+- 新增管理接口统一挂 `/api/v1/admin/*` 并依赖 `admin_user`；已有的 `/health/services`（根路径）与 `/security/incidents` 是历史路径，保留但同样必须依赖 `admin_user`。管理接口只返回账号元数据、审计、安全事件、运行状态与聚合统计，不含任何健康业务字段。
+- 后台聚合统计按业务时区归日，不写在 SQL 里：SQLite 与 Postgres 对带时区时间戳的 `date()` 语义不同，同一份 SQL 会切出不同日界，只取原始时间戳由服务层分组。
 - 响应体统一 `{code, message, data, request_id}`，由 `app/core/exceptions.py` 与 `app/core/response.py` 产出。不要另建一套 `{success, result}`。
 - 错误码只用 `app/core/errors.py` 里已定义的枚举。前端不按 `code` 分支，统一在 `src/api/client.ts` 抛 `ApiError` 并直接展示后端 `message`，新增错误码时 `message` 必须是能直接给用户看的中文。
 - JWT 只放 Authorization 头。禁止放查询参数，SSE 也一样。
@@ -134,6 +138,7 @@
 
 改了前端 `types.ts` 或后端 `app/schemas/` 时，`pytest tests/contract` 必须先过。新增前端接口不做映射也不写原因，`test_every_interface_is_accounted_for` 会挂——那不是噪音，是在要求给每个新接口做一次决定。
 改后台管理接口还要跑 `tests/api/test_admin_console.py`：越权 401/403、字段白名单、角色护栏与事件状态收敛都在那一处守着。
+改后台外壳或菜单还要跑 `src/layouts/AdminLayout.spec.ts`：那里钉住「侧边栏只含管理菜单、用户端入口不出现」，回归时最容易把 `/admin` 又挂回 `AppLayout`。
 
 `.github/workflows/ci.yml` 在 push 与 PR 上跑同一组命令。推送后确认 CI 绿了再继续下一个改动，红着连推等于把信号埋掉。
 

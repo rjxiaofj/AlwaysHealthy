@@ -16,23 +16,28 @@
 | --- | --- |
 | 后端 | FastAPI + SQLAlchemy 2.1 async + asyncpg，接口统一挂 `/api/v1/admin/*` |
 | 认证/权限 | JWT + `admin_user` 依赖，按库里 `User.role` 判断 |
-| 前端 | Vue 3 + Pinia + vue-router，`/admin` 独立路由，复用 `.glass`/`.segment`/`.chip` 等玻璃拟态 token |
-| 样式/可视化 | Tailwind；不引入 UI 组件库、不引入 echarts；趋势图用手写 SVG |
+| 前端 | Vue 3 + Pinia + vue-router，`/admin` 独立布局 `AdminLayout`，**不挂在 `AppLayout` 下**；复用 `.glass`/`.segment`/`.chip` 等玻璃拟态 token |
+| 样式/可视化 | Tailwind；不引入 UI 组件库、不引入 echarts；折线与条形图用手写 SVG / div |
 | 调度 | 不引入 APScheduler，与「无后台调度」原则一致 |
 
 禁止为后台单独引入 Element Plus 之类的组件库——会破坏现有玻璃拟态风格、拉大体积、多维护一套组件约定。
 
 ## 页面结构
 
-后台改为侧边栏多菜单，五个视图：
+后台是独立外壳，侧边栏只放管理菜单。用户端导航（健康首页、智能助手、健康评估、健康管理、指标趋势、个人中心、待办提醒）不得出现在后台任何位置；管理员在后台看到的应该是管理能力，不是自己的健康入口。
 
-| 菜单 | 内容 |
-| --- | --- |
-| 总览 | 用户总数、管理员数、待处置事件、今日登录失败、今日新增账号 |
-| 账号 | 列表（搜索/筛选/分页）、角色变更、停用/启用、硬删除 |
-| 审计 | `security_audit_logs` 分页查询，按 action / actor / result 过滤 |
-| 安全事件 | 列表（按 status/severity 筛选）、`open -> resolved` 处置 |
-| 模型与 Agent | 模型参数在线管理、Agent 清单加载状态、工作流运行统计、知识库状态 |
+路由与菜单一一对应，刷新和直达链接都能进：
+
+| 菜单 | 路由 | 内容 |
+| --- | --- | --- |
+| 总览 | `/admin/overview` | 用户总数、管理员数、待处置事件、今日登录失败、今日新增账号、服务状态 |
+| 数据看板 | `/admin/analytics` | 近 7 天新增账号与登录失败折线、账号角色/状态分布、审计动作 Top、事件分级、工作流状态 |
+| 账号 | `/admin/accounts` | 列表（搜索/筛选/分页）、角色变更、停用/启用、硬删除 |
+| 审计 | `/admin/audit` | `security_audit_logs` 分页查询，按 action / actor / result 过滤 |
+| 安全事件 | `/admin/incidents` | 列表（按 status/severity 筛选）、`open -> resolved` 处置 |
+| 模型与 Agent | `/admin/runtime` | 模型参数在线管理、Agent 清单加载状态、工作流运行统计、知识库状态 |
+
+外壳保留「返回前台」「切换主题」「退出登录」三个出口，这三个不算用户端菜单。
 
 ## 能力清单
 
@@ -57,6 +62,14 @@
 
 - `GET /admin/overview` 返回：用户总数、管理员数、待处置（open）事件数、今日登录失败数、今日新增账号数。
 
+### 数据看板
+
+- `GET /admin/analytics` 返回可视化数据，后台必须有图表，不能只有一行行数字。
+- 折线：近 7 天每日新增账号、每日登录失败。横轴固定 7 天且连续，缺的那天补 0，否则折线的 x 轴会跳日。
+- 条形：账号角色分布、账号状态分布、审计动作 Top N、安全事件分级、工作流运行状态。
+- 时间归日按业务时区（`BUSINESS_TZ`）算，不在 SQL 里按天分组——SQLite 与 Postgres 对带时区时间戳的 `date()` 语义不同，同一份 SQL 会切出不同日界。
+- 图表手写 SVG / div，不引图表库；颜色走 CSS 变量，深浅主题自动跟随。
+
 ### 模型与 Agent
 
 - 模型参数可在线修改并热生效：`llm_model`、`llm_api_key`、`embedding_backend`。
@@ -78,6 +91,8 @@
 7. 事件处置保持单向收敛，不开放重开。
 8. 前端 `requiresAdmin` 守卫不是权限边界；多路首屏读取用 `Promise.allSettled` 各自降级，读失败要说「读取失败」。
 9. 不新造响应体、错误码、分页格式。列表统一 `page`、`page_size`，返回 `{items, total, page, page_size}`。
+10. 后台走独立布局，不复用 `AppLayout`。侧边栏不得出现用户端导航项，也不得出现「待办提醒」这类个人入口——管理员的个人健康入口只在前台。
+11. 后台必须有可视化数据，至少覆盖 7 日趋势与分布统计；图表不引 echarts 或其他图表库。
 
 ## 与「无后台调度」区分
 
@@ -89,10 +104,13 @@
 
 本轮按完整方案补齐：账号搜索/停用/硬删除、审计查询、事件筛选、统计总览、模型与 Agent 在线管理、后台侧边栏多菜单。详见 `docs/impact/2026-11-06-admin-console.md`。
 
+2026-11-07 补齐：管理后台改为独立外壳 `AdminLayout`（`/admin` 不再挂在 `AppLayout` 下，侧边栏只剩管理菜单）、六个路由化面板、`GET /api/v1/admin/analytics` 与数据看板（7 日折线 + 五组分布条形）。详见 `docs/impact/2026-11-07-admin-shell-and-analytics.md`。
+
 ## 回归范围
 
-- `backend/tests/api/test_admin_console.py`：权限、字段范围、角色/状态/删除护栏、事件收敛、审计、模型参数。
+- `backend/tests/api/test_admin_console.py`：权限、字段范围、角色/状态/删除护栏、事件收敛、审计、模型参数、看板聚合。
 - `backend/tests/api/test_auth_role.py`：邀请码注册这条建管理员入口。
 - `backend/tests/contract/test_frontend_types.py`：管理接口响应的字段一致性。
-- `frontend/src/views/AdminView.spec.ts`：多视图首屏读取、写操作、二次确认与失败降级。
+- `frontend/src/layouts/AdminLayout.spec.ts`：侧边栏只含管理菜单、用户端入口不出现、菜单改路由、退出登录。
+- `frontend/src/views/AdminView.spec.ts`：按路由渲染面板、看板图表、写操作、二次确认与失败降级。
 - `docs/rules/auth-and-isolation.md` 的越权自测清单：普通用户与未登录访问管理接口必须被拒。

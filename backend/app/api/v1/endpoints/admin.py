@@ -21,6 +21,16 @@ async def overview(
     return ok(request, await admin_service.overview(session))
 
 
+@router.get("/analytics")
+async def analytics(
+    request: Request,
+    user: User = Depends(admin_user),
+    session: AsyncSession = Depends(db_session),
+):
+    """可视化看板数据：账号分布、7 日新增与登录失败曲线、审计动作 Top N、事件分级、工作流状态。"""
+    return ok(request, await admin_service.analytics(session))
+
+
 @router.get("/users")
 async def list_users(
     request: Request,

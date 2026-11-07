@@ -270,6 +270,83 @@ async def test_resolve_missing_incident_returns_404_and_audits(client, monkeypat
     assert await _audits(session, "resolve_incident", "fail", missing_id)
 
 
+# ---------- 数据看板 ----------
+
+
+async def test_analytics_requires_admin(client, auth) -> None:
+    assert (await client.get("/api/v1/admin/analytics", headers=auth)).status_code == 403
+
+
+async def test_analytics_returns_seven_day_series(client, monkeypatch) -> None:
+    from datetime import date
+
+    tokens, _ = await _admin(client, monkeypatch)
+    await _register(client)
+
+    response = await client.get("/api/v1/admin/analytics", headers=_headers(tokens))
+    assert response.status_code == 200
+    data = response.json()["data"]
+
+    assert set(data) == {
+        "range",
+        "users_by_role",
+        "users_by_status",
+        "new_users_trend",
+        "login_fail_trend",
+        "audit_top_actions",
+        "incidents_by_severity",
+        "workflow",
+        "totals",
+    }
+
+    # 横轴固定 7 天且连续，缺的那天补 0，不然折线的 x 轴会跳日
+    trend = data["new_users_trend"]
+    assert len(trend) == 7
+    days = [date.fromisoformat(item["date"]) for item in trend]
+    assert days == sorted(days)
+    assert all((days[i + 1] - days[i]).days == 1 for i in range(len(days) - 1))
+    assert data["range"]["days"] == 7
+    assert data["range"]["start"] == trend[0]["date"]
+    assert data["range"]["end"] == trend[-1]["date"]
+
+
+async def test_analytics_counts_today_registration(client, monkeypatch) -> None:
+    """刚注册的账号要落在最后一天那一格上，否则看板画出来是空的。"""
+    tokens, _ = await _admin(client, monkeypatch)
+    await _register(client)
+
+    response = await client.get("/api/v1/admin/analytics", headers=_headers(tokens))
+    data = response.json()["data"]
+
+    assert data["totals"]["new_users"] >= 1
+    assert data["new_users_trend"][-1]["count"] >= 1
+    assert any(item["key"] == "admin" for item in data["users_by_role"])
+
+
+async def test_analytics_counts_login_failures(client, monkeypatch) -> None:
+    """登录失败从审计表来，走一次错误密码就该出现在今天的格子里。"""
+    tokens, admin_name = await _admin(client, monkeypatch)
+    await client.post("/api/v1/auth/login", json={"username": admin_name, "password": "wrong-pass"})
+
+    response = await client.get("/api/v1/admin/analytics", headers=_headers(tokens))
+    data = response.json()["data"]
+
+    assert data["login_fail_trend"][-1]["count"] >= 1
+    assert data["totals"]["login_fails"] >= 1
+
+
+async def test_analytics_audit_top_is_sorted(client, monkeypatch) -> None:
+    tokens, _ = await _admin(client, monkeypatch)
+
+    response = await client.get("/api/v1/admin/analytics", headers=_headers(tokens))
+    actions = response.json()["data"]["audit_top_actions"]
+
+    assert actions, "注册管理员本身就会写一条 register_admin 审计"
+    counts = [item["count"] for item in actions]
+    assert counts == sorted(counts, reverse=True)
+    assert len(actions) <= 8
+
+
 # ---------- 账号停用/启用 ----------
 
 
